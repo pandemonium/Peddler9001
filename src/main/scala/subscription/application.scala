@@ -139,11 +139,29 @@ trait TransactionFeatures { self: FeatureUniverse with CustomerFeatures ⇒
   }
 }
 
+trait DepositFeatures { self: FeatureUniverse ⇒
+  import persistence.profile.simple._
+  import Parcel._
+
+  def deposits(from: DateTime, through: DateTime): String ⊕ Seq[UP#Deposit] = databaseMap { implicit session ⇒
+    persistence.depositsSpanning(from, through).buildColl.successfulParcel
+  }
+
+  def addDeposit(deposit: UP#Deposit): String ⊕ UP#Deposit = databaseMap { implicit session ⇒
+    deposit match {
+      case persistence.Deposit(_, valueDate, _, amount, reference, payer, avi, txId, comment) ⇒
+//        persistence.insertDeposit()
+        failed("not_implemented")
+    }
+  }
+}
+
 class ApplicationFeatures(val persistence: UnifiedPersistence,
                           val database: JdbcBackend#Database) extends FeatureUniverse
   with AuthenticationFeatures
   with CustomerFeatures
   with TransactionFeatures
+  with DepositFeatures
 
 /*
 

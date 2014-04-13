@@ -120,7 +120,7 @@ object Domain {
                        amount: Int,
                        reference: String,
                        payer: String,
-                       `avi#`: Option[String],
+                       avi: Option[String],
                        transactionId: Option[Int],
                        comment: Option[String])
 
@@ -131,14 +131,14 @@ object Domain {
       def amount        = column[Int]("amount", O.NotNull)
       def reference     = column[String]("reference", O.NotNull)
       def payer         = column[String]("payer", O.NotNull)
-      def `avi#`        = column[String]("avi#", O.NotNull)
-      def transactionId = column[Int]("transactionId#")
-      def comment       = column[String]("transactionId#")
+      def avi           = column[String]("avi", O.NotNull)
+      def transactionId = column[Int]("transactionId")
+      def comment       = column[String]("comment")
 
       def transaction   =
         foreignKey("transactionFk", transactionId, transactions)(_.id)
 
-      def *  = (id ?, valueDate, created, amount, reference, payer, `avi#` ?, transactionId ?, comment ?) <>
+      def *  = (id ?, valueDate, created, amount, reference, payer, avi ?, transactionId ?, comment ?) <>
                (Deposit.tupled, Deposit.unapply)
     }
 
@@ -150,16 +150,19 @@ object Domain {
                       amount: Int,
                       reference: String,
                       payer: String,
-                      `avi#`: Option[String],
+                      avi: Option[String],
                       comment: Option[String])
                      (implicit s: Session) =
-      deposits += Deposit(None, valueDate, currentDateTime, amount, reference, payer, `avi#`, None, comment)
+      deposits += Deposit(None, valueDate, currentDateTime, amount, reference, payer, avi, None, comment)
+
+    def depositsSpanning(from: DateTime, through: DateTime) = for {
+      d <- deposits
+      if d.created >= from && d.created <= through
+    } yield d
   }
 
   trait ProductsAspect extends Structure { self: PersistentUniverse ⇒
     import profile.simple._
-
-
 
     case class Product(id: Option[Int],
                        `type`: Int,

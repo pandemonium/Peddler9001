@@ -161,6 +161,24 @@ object Service {
     }
   }
 
+  trait DepositRoute extends RouteLike { self: ServiceUniverse ⇒
+    import protocol._
+
+    override abstract def route = thisRoute ~ super.route
+
+    private def thisRoute = path("deposits") {
+      get {
+        parameters('from.as[DateTime], 'through.as[DateTime]) { (from, through) ⇒
+          complete(application.deposits(from, through))
+        }
+      } ~ post {
+        entity(as[UP#Deposit]) { deposit ⇒
+          complete(application addDeposit deposit)
+        }
+      }
+    }
+  }
+
   trait ServicePlatform extends ServiceUniverse with RouteLike {
     def route: Route = reject
   }
@@ -170,6 +188,7 @@ object Service {
     with ProtectedRoute
     with CustomerRoute
     with TransactionRoute
+    with DepositRoute
 
   case class Endpoint(host: String, port: Int)
 
