@@ -342,8 +342,43 @@ object Domain {
     }
   }
 
+  object SubscriptionsModule extends AbstractModule {
+    import CustomersModule._
+
+    case class Subscription(id: Option[Int],
+                            customerId: Int,
+                            created: DateTime,
+                            startDate: Option[DateTime],
+                            comment: Option[String])
+
+    trait SubscriptionsAspect extends Structure { self: PersistentUniverse ⇒
+      import profile.simple._
+
+      class Subscriptions(tag: Tag) extends Table[Subscription](tag: Tag, "Subscriptions") {
+        def id         = column[Int]("id", O.PrimaryKey, O.AutoInc)
+        def customerId = column[Int]("customerId", O.NotNull)
+        def created    = column[DateTime]("created", O.NotNull)
+        def startDate  = column[DateTime]("startDate")
+        def comment    = column[String]("comment")
+
+        def * = (id ?, customerId, created, startDate ?, comment ?) <>
+                  (Subscription.tupled, Subscription.unapply)
+      }
+
+      val subscriptions      = TableQuery[Subscriptions]
+      val subscriptionInsert = subscriptions returning subscriptions.map(_.id)
+
+      def insertSubscription(customer: Customer, startDate: Option[DateTime], comment: Option[String])
+                            (implicit s: Session) =
+        subscriptionInsert += Subscription(None, customer.id.get, new DateTime, startDate, comment)
+
+      def findSubscriptionById = subscriptions.findBy(_.id)
+    }
+  }
+
   object PersistenceModule {
-    import CustomersModule._, TransactionsModule._, DepositsModule._, ProductsModule._, AccountsModule._
+    import CustomersModule._, TransactionsModule._, DepositsModule._,
+           ProductsModule._, AccountsModule._, SubscriptionsModule._
 
     class UnifiedPersistence(val profile: JdbcProfile) extends Foundation
       with CustomersAspect
@@ -351,6 +386,7 @@ object Domain {
       with DepositsAspect
       with ProductsAspect
       with AccountsAspect
+      with SubscriptionsAspect
   }
 }
 

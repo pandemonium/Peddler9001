@@ -24,7 +24,8 @@ import spray.routing._, Directives._
 object Service {
   import paermar.application.ApplicationFeatures
   import paermar.model.Domain._
-  import PersistenceModule._, TransactionsModule._, DepositsModule._, CustomersModule._, ProductsModule._
+  import PersistenceModule._, TransactionsModule._, DepositsModule._,
+         CustomersModule._, ProductsModule._, SubscriptionsModule._
 
   trait ServiceUniverse {
     val protocol: Protocol
@@ -76,12 +77,13 @@ object Service {
       }
     }
 
-    implicit val _cashPaymentFormat = jsonFormat3(CashPayment)
-    implicit val _bankGiroFormat    = jsonFormat5(BankGiroVerification)
-    implicit val _depositFormat     = jsonFormat9(Deposit)
-    implicit val _customerFormat    = jsonFormat3(Customer)
-    implicit val _transactionFormat = jsonFormat6(Transaction)
-    implicit val _productFormat     = jsonFormat5(Product)
+    implicit val _cashPaymentFormat  = jsonFormat3(CashPayment)
+    implicit val _bankGiroFormat     = jsonFormat5(BankGiroVerification)
+    implicit val _depositFormat      = jsonFormat9(Deposit)
+    implicit val _customerFormat     = jsonFormat3(Customer)
+    implicit val _transactionFormat  = jsonFormat6(Transaction)
+    implicit val _productFormat      = jsonFormat5(Product)
+    implicit val _subscriptionFormat = jsonFormat5(Subscription)
 
     implicit def _ParcelFormat[X: JsonFormat, A: JsonFormat] = new RootJsonFormat[X ⊕ A] {
       val Success = SingletonMapExtractor[String, JsValue]("success")
@@ -198,6 +200,22 @@ object Service {
     }
   }
 
+  trait SubscriptionsRoute extends RouteSource { self: ServiceUniverse ⇒
+    import protocol._
+
+    override abstract def route = thisRoute ~ super.route
+
+    private def thisRoute = path("subscriptions") {
+      get {
+        complete(application.subscriptions)
+      } ~ post {
+        entity(as[Subscription]) { subscription ⇒
+          complete(application addSubscription subscription)
+        }
+      }
+    }
+  }
+
   trait ServicePlatform extends ServiceUniverse with RouteSource {
     def route: Route = reject
   }
@@ -209,6 +227,7 @@ object Service {
     with TransactionRoute
     with DepositRoute
     with ProductRoute
+    with SubscriptionsRoute
 
   case class Endpoint(host: String, port: Int)
 

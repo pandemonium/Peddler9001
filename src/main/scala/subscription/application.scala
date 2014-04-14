@@ -198,6 +198,28 @@ trait ProductFeatures { self: FeatureUniverse ⇒
   }
 }
 
+trait SubscriptionFeatures { self: FeatureUniverse ⇒
+  import persistence.profile.simple._
+  import Parcel._
+  import SubscriptionsModule._
+
+  def subscriptions: String ⊕ Seq[Subscription] = databaseMap { implicit session ⇒
+    persistence.subscriptions.buildColl.successfulParcel
+  }
+
+  def addSubscription(subscription: Subscription): String ⊕ Subscription = databaseMap { implicit session ⇒
+    parcelFromOption(subscription match {
+      case Subscription(_, customerId, _, startDate, comment) ⇒
+        for {
+            customer      <- persistence findCustomerById customerId firstOption
+
+            subscriptionId = persistence.insertSubscription(customer, startDate, comment)
+            subscription  <- persistence findSubscriptionById subscriptionId firstOption
+        } yield subscription
+    }, "subscription.created_yet_not_found")
+  }
+}
+
 class ApplicationFeatures(val persistence: Domain.PersistenceModule.UnifiedPersistence,
                           val database: JdbcBackend#Database) extends FeatureUniverse
   with AuthenticationFeatures
@@ -205,3 +227,4 @@ class ApplicationFeatures(val persistence: Domain.PersistenceModule.UnifiedPersi
   with TransactionFeatures
   with DepositFeatures
   with ProductFeatures
+  with SubscriptionFeatures
