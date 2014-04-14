@@ -156,9 +156,7 @@ object Service {
         }
       } ~ post {
         entity(as[Transaction]) { transaction ⇒
-          val created = application addTransaction transaction
-
-          complete(created)
+          complete(application addTransaction transaction)
         }
       }
     }
@@ -201,13 +199,12 @@ object Service {
                                         user = "root",
                                     password = "")
 
-    val application =
-      new ApplicationFeatures(new UnifiedPersistence(MySQLDriver), database)
-
-    val protocol = new Protocol(application)
-
     implicit def executionContext: ExecutionContext = context.dispatcher
-    def receive = runRoute(route)
+
+    val application = new ApplicationFeatures(new UnifiedPersistence(MySQLDriver), database)
+    val protocol    = new Protocol(application)
+
+    def receive     = runRoute(route)
   }
 
   def bind(e: Endpoint)(implicit system: ActorSystem) = IO(Http) ! Http.Bind(

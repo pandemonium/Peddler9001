@@ -103,11 +103,11 @@ object Domain {
       val transactionInserts = transactions returning transactions.map(_.id)
 
       def insertDebit(customer: Customer, amount: Int, comment: Option[String] = None)
-                     (implicit s: Session) =
+                     (implicit s: Session): Int =
         transactionInserts += Transaction(None, customer.id.get, currentDateTime, Debit, amount, comment)
 
       def insertCredit(customer: Customer, amount: Int, comment: Option[String])
-                      (implicit s: Session) =
+                      (implicit s: Session): Int =
         transactionInserts += Transaction(None, customer.id.get, currentDateTime, Credit, amount, comment)
 
       def transactionsSpanning(from: DateTime, through: DateTime) = for {
@@ -171,16 +171,17 @@ object Domain {
                         amount: Int,
                         reference: String)
                        (implicit s: Session): Int =
-        insertDeposit(new DateTime, amount, reference, customer.name, None, None)
+        insertDeposit(new DateTime, amount, reference, customer.name, None, None, None)
 
       def insertDeposit(valueDate: DateTime,
                         amount: Int,
                         reference: String,
                         payer: String,
                         avi: Option[String],
+                        transactionId: Option[Int],
                         comment: Option[String])
                        (implicit s: Session): Int =
-        depositInserts += Deposit(None, valueDate, currentDateTime, amount, reference, payer, avi, None, comment)
+        depositInserts += Deposit(None, valueDate, currentDateTime, amount, reference, payer, avi, transactionId, comment)
 
       def depositsSpanning(from: DateTime, through: DateTime) = for {
         d <- deposits

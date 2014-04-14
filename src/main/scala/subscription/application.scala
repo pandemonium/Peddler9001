@@ -137,10 +137,10 @@ trait TransactionFeatures { self: FeatureUniverse with CustomerFeatures ⇒
   }
 }
 
-trait DepositFeatures { self: FeatureUniverse ⇒
+trait DepositFeatures { self: FeatureUniverse with TransactionFeatures ⇒
   import persistence.profile.simple._
   import Parcel._
-  import DepositsModule._
+  import DepositsModule._, TransactionsModule._
 
   def depositsSpanning(from: DateTime, through: DateTime): String ⊕ Seq[Deposit] = databaseMap { implicit session ⇒
     persistence.depositsSpanning(from, through).buildColl.successfulParcel
@@ -150,13 +150,18 @@ trait DepositFeatures { self: FeatureUniverse ⇒
     payment match {
       case CashPayment(customerId, amount, reference) ⇒
 
-        // This pattern is going to be quite common. Improve on it!
+        val deposit = for {
+          customer     <- persistence findCustomerById customerId firstOption
 
-        val customer  = persistence findCustomerById customerId firstOption
-        val depositId = customer map (persistence.insertDeposit(_, amount, reference))
+          transactionId = persistence.insertCredit(customer, amount, Option("deposit.cash"))
+          transaction  <- persistence findTransactionById transactionId firstOption
 
-        depositId flatMap (persistence findDepositById _ firstOption) match {
-          case Some(x) ⇒ successful(x)
+          depositId     = persistence.insertDeposit(transaction.created, amount, reference, customer.name, None, Option(transactionId), Option("deposit.cash"))
+          deposit      <- persistence findDepositById depositId firstOption
+        } yield deposit
+
+        deposit match {
+          case Some(d) ⇒ successful(d)
           case _       ⇒ failed("deposit.created_yet_not_found")
         }
     }
