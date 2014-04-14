@@ -23,10 +23,8 @@ import spray.routing._, Directives._
 
 object Service {
   import paermar.application.ApplicationFeatures
-  import paermar.model.Domain.PersistenceModule._
-  import paermar.model.Domain.TransactionsModule._
-  import paermar.model.Domain.DepositsModule._
-  import paermar.model.Domain.CustomersModule._
+  import paermar.model.Domain._
+  import PersistenceModule._, TransactionsModule._, DepositsModule._, CustomersModule._, ProductsModule._
 
   trait ServiceUniverse {
     val protocol: Protocol
@@ -83,6 +81,7 @@ object Service {
     implicit val _depositFormat     = jsonFormat9(Deposit)
     implicit val _customerFormat    = jsonFormat3(Customer)
     implicit val _transactionFormat = jsonFormat6(Transaction)
+    implicit val _productFormat     = jsonFormat5(Product)
 
     implicit def _ParcelFormat[X: JsonFormat, A: JsonFormat] = new RootJsonFormat[X ⊕ A] {
       val Success = SingletonMapExtractor[String, JsValue]("success")
@@ -183,6 +182,22 @@ object Service {
     }
   }
 
+  trait ProductRoute extends RouteSource { self: ServiceUniverse ⇒
+    import protocol._
+
+    override abstract def route = thisRoute ~ super.route
+
+    private def thisRoute = path("products") {
+      get {
+        complete(application.products)
+      } ~ post {
+        entity(as[Product]) { product ⇒
+          complete(application addProduct product)
+        }
+      }
+    }
+  }
+
   trait ServicePlatform extends ServiceUniverse with RouteSource {
     def route: Route = reject
   }
@@ -193,6 +208,7 @@ object Service {
     with CustomerRoute
     with TransactionRoute
     with DepositRoute
+    with ProductRoute
 
   case class Endpoint(host: String, port: Int)
 

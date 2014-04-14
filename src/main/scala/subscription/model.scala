@@ -162,8 +162,8 @@ object Domain {
         def transaction   =
           foreignKey("transactionFk", transactionId, transactions)(_.id)
 
-        def *  = (id ?, valueDate, created, amount, reference, payer, avi ?, transactionId ?, comment ?) <>
-          (Deposit.tupled, Deposit.unapply)
+        def * = (id ?, valueDate, created, amount, reference, payer, avi ?, transactionId ?, comment ?) <>
+                  (Deposit.tupled, Deposit.unapply)
       }
 
       val deposits = TableQuery[Deposits]
@@ -197,6 +197,10 @@ object Domain {
   }
 
   object ProductsModule extends AbstractModule {
+
+    // What are product types? Programme | Subscription?
+    // Are there more types than those two?
+
     case class Product(id: Option[Int],
                        `type`: Int,
                        name: String,
@@ -213,18 +217,21 @@ object Domain {
         def unitPrice   = column[Int]("unitPrice", O.NotNull)
         def description = column[String]("description")
 
-        def * = (id ?, `type`, name, unitPrice, description ?) <>
-          (Product.tupled, Product.unapply)
+        def *           = (id ?, `type`, name, unitPrice, description ?) <>
+                            (Product.tupled, Product.unapply)
       }
 
-      val products = TableQuery[Products]
+      val products       = TableQuery[Products]
+      val productInserts = products returning products.map(_.id)
 
       def insertProduct(`type`: Int,
                         name: String,
                         unitPrice: Int,
                         description: Option[String])
                        (implicit s: Session) =
-        products += Product(None, `type`, name, unitPrice, description)
+        productInserts += Product(None, `type`, name, unitPrice, description)
+
+      def findProductById = products.findBy(_.id)
     }
   }
 

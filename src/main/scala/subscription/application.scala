@@ -54,11 +54,20 @@ object Parcel {
 
 trait FeatureUniverse {
   import Parcel._, Domain.PersistenceModule._
+  import scala.concurrent.{ Future, ExecutionContext }
 
   val persistence: UnifiedPersistence
   val database:    JdbcBackend#Database
 
   def databaseMap[X, A](f: JdbcBackend#Session ⇒ X ⊕ A): X ⊕ A = database withSession f
+  def asyncDatabaseMap[X, A](f: JdbcBackend#Session ⇒ X ⊕ A)
+                            (implicit ec: ExecutionContext): Future[X ⊕ A] =
+    Future(databaseMap(f))
+
+  def parcelFromOption[A](item: Option[A], failMessage: ⇒ String): String ⊕ A = item match {
+    case Some(data) ⇒ successful(data)
+    case _       ⇒ failed(failMessage)
+  }
 }
 
 trait AuthenticationFeatures { self: FeatureUniverse ⇒
@@ -147,11 +156,6 @@ trait DepositFeatures { self: FeatureUniverse with TransactionFeatures ⇒
   }
 
   def addDeposit(payment: Payment): String ⊕ Deposit = databaseMap { implicit session ⇒
-    def parcelate(deposit: Option[Deposit]) = deposit match {
-      case Some(d) ⇒ successful(d)
-      case _       ⇒ failed("deposit.created_yet_not_found")
-    }
-
     payment match {
       case CashPayment(customerId, amount, reference) ⇒
         val deposit = for {
@@ -164,14 +168,33 @@ trait DepositFeatures { self: FeatureUniverse with TransactionFeatures ⇒
           deposit      <- persistence findDepositById depositId firstOption
         } yield deposit
 
-        parcelate(deposit)
+        parcelFromOption(deposit, "deposit.created_yet_not_found")
 
       case BankGiroVerification(valueDate, amount, reference, payer, avi) ⇒
         val id      = persistence.insertDeposit(valueDate, amount, reference, payer, Option(avi), None, None)
         val deposit = persistence findDepositById id firstOption
 
-        parcelate(deposit)
+        parcelFromOption(deposit, "deposit.created_yet_not_found")
     }
+  }
+}
+
+trait ProductFeatures { self: FeatureUniverse ⇒
+  import persistence.profile.simple._
+  import Parcel._
+  import ProductsModule._
+
+  def products: String ⊕ Seq[Product] = databaseMap { implicit session ⇒
+    persistence.products.buildColl.successfulParcel
+  }
+
+  def addProduct(product: Product): String ⊕ Product = databaseMap { implicit session ⇒
+    parcelFromOption(product match {
+      case Product(_, typ, name, unitPrice, description) ⇒
+        val id = persistence.insertProduct(typ, name, unitPrice, description)
+
+        persistence findProductById id firstOption
+    }, "product.created_yet_not_found")
   }
 }
 
@@ -181,3 +204,4 @@ class ApplicationFeatures(val persistence: Domain.PersistenceModule.UnifiedPersi
   with CustomerFeatures
   with TransactionFeatures
   with DepositFeatures
+  with ProductFeatures
