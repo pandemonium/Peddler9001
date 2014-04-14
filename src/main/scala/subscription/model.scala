@@ -127,7 +127,11 @@ object Domain {
     sealed trait Payment
     case class CashPayment(customerId: Int, amount: Int, reference: String)
       extends Payment
-    case class BankGiroVerification()
+    case class BankGiroVerification(valueDate: DateTime,
+                                    amount: Int,
+                                    reference: String,
+                                    payer: String,
+                                    avi: String)
       extends Payment
 
     case class Deposit(id: Option[Int],

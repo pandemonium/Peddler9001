@@ -147,9 +147,13 @@ trait DepositFeatures { self: FeatureUniverse with TransactionFeatures ⇒
   }
 
   def addDeposit(payment: Payment): String ⊕ Deposit = databaseMap { implicit session ⇒
+    def parcelate(deposit: Option[Deposit]) = deposit match {
+      case Some(d) ⇒ successful(d)
+      case _       ⇒ failed("deposit.created_yet_not_found")
+    }
+
     payment match {
       case CashPayment(customerId, amount, reference) ⇒
-
         val deposit = for {
           customer     <- persistence findCustomerById customerId firstOption
 
@@ -160,10 +164,13 @@ trait DepositFeatures { self: FeatureUniverse with TransactionFeatures ⇒
           deposit      <- persistence findDepositById depositId firstOption
         } yield deposit
 
-        deposit match {
-          case Some(d) ⇒ successful(d)
-          case _       ⇒ failed("deposit.created_yet_not_found")
-        }
+        parcelate(deposit)
+
+      case BankGiroVerification(valueDate, amount, reference, payer, avi) ⇒
+        val id      = persistence.insertDeposit(valueDate, amount, reference, payer, Option(avi), None, None)
+        val deposit = persistence findDepositById id firstOption
+
+        parcelate(deposit)
     }
   }
 }

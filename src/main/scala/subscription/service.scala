@@ -78,7 +78,8 @@ object Service {
       }
     }
 
-    implicit val _cashPaymenyFormat = jsonFormat3(CashPayment)
+    implicit val _cashPaymentFormat = jsonFormat3(CashPayment)
+    implicit val _bankGiroFormat    = jsonFormat5(BankGiroVerification)
     implicit val _depositFormat     = jsonFormat9(Deposit)
     implicit val _customerFormat    = jsonFormat3(Customer)
     implicit val _transactionFormat = jsonFormat6(Transaction)
@@ -174,6 +175,8 @@ object Service {
         }
       } ~ post {
         entity(as[CashPayment]) { payment ⇒
+          complete(application addDeposit payment)
+        } ~ entity(as[BankGiroVerification]) { payment ⇒
           complete(application addDeposit payment)
         }
       }
