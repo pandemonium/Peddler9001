@@ -34,7 +34,7 @@ object Service {
     implicit def executionContext: ExecutionContext
   }
 
-  trait RouteLike {
+  trait RouteSource {
     def route: Route
   }
 
@@ -78,6 +78,7 @@ object Service {
       }
     }
 
+    implicit val _cashPaymenyFormat = jsonFormat3(CashPayment)
     implicit val _depositFormat     = jsonFormat9(Deposit)
     implicit val _customerFormat    = jsonFormat3(Customer)
     implicit val _transactionFormat = jsonFormat6(Transaction)
@@ -97,7 +98,7 @@ object Service {
     }
   }
 
-  trait ProtectedRoute extends RouteLike { self: ServiceUniverse ⇒
+  trait ProtectedRoute extends RouteSource { self: ServiceUniverse ⇒
     import authentication._
     // Does this need a sealRoute added?
 
@@ -113,7 +114,7 @@ object Service {
     }
   }
 
-  trait ServerInfoRoute extends RouteLike { self: ServiceUniverse ⇒
+  trait ServerInfoRoute extends RouteSource { self: ServiceUniverse ⇒
     override abstract def route = thisRoute ~ super.route
 
     private def thisRoute = path("server-info") {
@@ -125,7 +126,7 @@ object Service {
     }
   }
 
-  trait CustomerRoute extends RouteLike { self: ServiceUniverse ⇒
+  trait CustomerRoute extends RouteSource { self: ServiceUniverse ⇒
     import protocol._
 
     override abstract def route = thisRoute ~ super.route
@@ -137,15 +138,13 @@ object Service {
         entity(as[String]) { name ⇒ ctx ⇒
           val customer = application addCustomer name
 
-          println(s"name: `$name`")
-
           ctx complete customer
         }
       }
     }
   }
 
-  trait TransactionRoute extends RouteLike { self: ServiceUniverse ⇒
+  trait TransactionRoute extends RouteSource { self: ServiceUniverse ⇒
     import protocol._
 
     override abstract def route = thisRoute ~ super.route
@@ -165,7 +164,7 @@ object Service {
     }
   }
 
-  trait DepositRoute extends RouteLike { self: ServiceUniverse ⇒
+  trait DepositRoute extends RouteSource { self: ServiceUniverse ⇒
     import protocol._
 
     override abstract def route = thisRoute ~ super.route
@@ -176,19 +175,14 @@ object Service {
           complete(application.depositsSpanning(from, through))
         }
       } ~ post {
-        ???
-/*
-        entity(as[AF#CashDeposit]) { (deposit: AF#CashDeposit)⇒
-          val x = application.addDeposit(deposit)
-
-          complete(x)
+        entity(as[CashPayment]) { payment ⇒
+          complete(application addDeposit payment)
         }
-*/
       }
     }
   }
 
-  trait ServicePlatform extends ServiceUniverse with RouteLike {
+  trait ServicePlatform extends ServiceUniverse with RouteSource {
     def route: Route = reject
   }
 
@@ -207,7 +201,7 @@ object Service {
                                         user = "root",
                                     password = "")
 
-    lazy val application: ApplicationFeatures =
+    val application =
       new ApplicationFeatures(new UnifiedPersistence(MySQLDriver), database)
 
     val protocol = new Protocol(application)

@@ -124,6 +124,12 @@ object Domain {
   object DepositsModule extends AbstractModule {
     import TransactionsModule._, CustomersModule._
 
+    sealed trait Payment
+    case class CashPayment(customerId: Int, amount: Int, reference: String)
+      extends Payment
+    case class BankGiroVerification()
+      extends Payment
+
     case class Deposit(id: Option[Int],
                        valueDate: DateTime,
                        created: DateTime,
@@ -157,6 +163,7 @@ object Domain {
       }
 
       val deposits = TableQuery[Deposits]
+      val depositInserts = deposits returning deposits.map(_.id)
 
       override abstract def description = deposits.ddl ++ super.description
 
@@ -173,12 +180,14 @@ object Domain {
                         avi: Option[String],
                         comment: Option[String])
                        (implicit s: Session): Int =
-        deposits += Deposit(None, valueDate, currentDateTime, amount, reference, payer, avi, None, comment)
+        depositInserts += Deposit(None, valueDate, currentDateTime, amount, reference, payer, avi, None, comment)
 
       def depositsSpanning(from: DateTime, through: DateTime) = for {
         d <- deposits
         if d.created >= from && d.created <= through
       } yield d
+
+      def findDepositById = deposits.findBy(_.id)
     }
   }
 

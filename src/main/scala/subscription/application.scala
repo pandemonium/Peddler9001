@@ -142,23 +142,23 @@ trait DepositFeatures { self: FeatureUniverse ⇒
   import Parcel._
   import DepositsModule._
 
-  case class BankGiroVerification()
-
   def depositsSpanning(from: DateTime, through: DateTime): String ⊕ Seq[Deposit] = databaseMap { implicit session ⇒
     persistence.depositsSpanning(from, through).buildColl.successfulParcel
   }
 
-  def addDeposit(deposit: Deposit): String ⊕ Deposit = databaseMap { implicit session ⇒
-    deposit match {
-      case x ⇒
-/*
-        for (customer <- persistence findCustomerById customerId firstOption)
-          yield {
-            persistence.insertDeposit(customer, amount, reference)
-          }
-*/
+  def addDeposit(payment: Payment): String ⊕ Deposit = databaseMap { implicit session ⇒
+    payment match {
+      case CashPayment(customerId, amount, reference) ⇒
 
-        ???
+        // This pattern is going to be quite common. Improve on it!
+
+        val customer  = persistence findCustomerById customerId firstOption
+        val depositId = customer map (persistence.insertDeposit(_, amount, reference))
+
+        depositId flatMap (persistence findDepositById _ firstOption) match {
+          case Some(x) ⇒ successful(x)
+          case _       ⇒ failed("deposit.created_yet_not_found")
+        }
     }
   }
 }
