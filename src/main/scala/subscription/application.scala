@@ -1,7 +1,7 @@
 package paermar
 package application
 
-import paermar.model.Domain.UnifiedPersistence
+import paermar.model._, Domain._
 import scala.slick.jdbc.JdbcBackend
 import org.joda.time.DateTime
 
@@ -9,8 +9,8 @@ object Parcel {
   type ⊕ [A, B] = Parcel[A, B]
 
   implicit class ParcelOps[A](value: A) {
-    def successfulParcel[X, AA <: A] = Parcel successful value
-    def failedParcel     = Parcel failed value
+    def successfulParcel[X, AA >: A] = Parcel successful value
+    def failedParcel                 = Parcel failed value
   }
 
   sealed trait Parcel[+X, +A] { self ⇒
@@ -53,8 +53,7 @@ object Parcel {
 }
 
 trait FeatureUniverse {
-  import Parcel._
-  type UP = UnifiedPersistence
+  import Parcel._, Domain.PersistenceModule._
 
   val persistence: UnifiedPersistence
   val database:    JdbcBackend#Database
@@ -79,12 +78,13 @@ trait AuthenticationFeatures { self: FeatureUniverse ⇒
 trait CustomerFeatures { self: FeatureUniverse ⇒
   import persistence.profile.simple._
   import Parcel._
+  import CustomersModule._
 
-  def customers: String ⊕ Seq[UP#Customer] = databaseMap { implicit session ⇒
+  def customers: String ⊕ Seq[Customer] = databaseMap { implicit session ⇒
     persistence.customers.buildColl.successfulParcel
   }
 
-  def addCustomer(name: String): String ⊕ UP#Customer = databaseMap { implicit session ⇒
+  def addCustomer(name: String): String ⊕ Customer = databaseMap { implicit session ⇒
     val id       = persistence insertCustomer name
     val customer = persistence findCustomerById id firstOption
 
@@ -94,38 +94,36 @@ trait CustomerFeatures { self: FeatureUniverse ⇒
 
 trait TransactionFeatures { self: FeatureUniverse with CustomerFeatures ⇒
   import persistence.profile.simple._
-  import persistence.TransactionType._
   import Parcel._
+  import TransactionsModule._, TransactionType._
 
   class ValidatingTransactionExtractor(val `type`: TransactionType) {
-    def unapply(x: UP#Transaction) =
-      if (x.amount > 0 && x.`type` == `type`) Some((x.customerId, x.amount, x.comment))
+    def unapply(tx: Transaction) =
+      if (tx.amount > 0 && tx.`type` == `type`) Some((tx.customerId, tx.amount, tx.comment))
       else None
   }
   val ValidDebit  = new ValidatingTransactionExtractor(Debit)
   val ValidCredit = new ValidatingTransactionExtractor(Credit)
 
-  def transactions(from: DateTime, through: DateTime): String ⊕ Seq[UP#Transaction] = databaseMap { implicit session ⇒
+  def transactionsSpanning(from: DateTime, through: DateTime): String ⊕ Seq[Transaction] = databaseMap { implicit session ⇒
     // There's no error handling anywhere here.
 
     // Sbould `successful` turn into a `failed` on exceptions?
     persistence.transactionsSpanning(from, through).buildColl.successfulParcel
   }
 
-  def addTransaction(tx: UP#Transaction): String ⊕ UP#Transaction = databaseMap { implicit session ⇒
+  def addTransaction(tx: Transaction): String ⊕ Transaction = databaseMap { implicit session ⇒
     val txId1 = tx match {
       case ValidDebit(customerId, amount, comment) ⇒
         val txId = for {
           customer <- persistence findCustomerById customerId firstOption
         } yield persistence.insertDebit(customer, amount, comment)
-
         txId map successful getOrElse failed("transaction.no_such_customer")
 
       case ValidCredit(customerId, amount, comment) ⇒
         val txId = for {
           customer <- persistence findCustomerById customerId firstOption
         } yield persistence.insertCredit(customer, amount, comment)
-
         txId map successful getOrElse failed("transaction.no_such_customer")
 
       case tx0 ⇒
@@ -134,7 +132,7 @@ trait TransactionFeatures { self: FeatureUniverse with CustomerFeatures ⇒
 
     txId1 map (persistence findTransactionById _ firstOption) flatMap {
       case Some(x) ⇒ successful(x)
-      case _    ⇒ failed("transaction.created_yet_not_found")
+      case _       ⇒ failed("transaction.created_yet_not_found")
     }
   }
 }
@@ -142,44 +140,32 @@ trait TransactionFeatures { self: FeatureUniverse with CustomerFeatures ⇒
 trait DepositFeatures { self: FeatureUniverse ⇒
   import persistence.profile.simple._
   import Parcel._
+  import DepositsModule._
 
-  def deposits(from: DateTime, through: DateTime): String ⊕ Seq[UP#Deposit] = databaseMap { implicit session ⇒
+  case class BankGiroVerification()
+
+  def depositsSpanning(from: DateTime, through: DateTime): String ⊕ Seq[Deposit] = databaseMap { implicit session ⇒
     persistence.depositsSpanning(from, through).buildColl.successfulParcel
   }
 
-  def addDeposit(deposit: UP#Deposit): String ⊕ UP#Deposit = databaseMap { implicit session ⇒
+  def addDeposit(deposit: Deposit): String ⊕ Deposit = databaseMap { implicit session ⇒
     deposit match {
-      case persistence.Deposit(_, valueDate, _, amount, reference, payer, avi, txId, comment) ⇒
-//        persistence.insertDeposit()
-        failed("not_implemented")
+      case x ⇒
+/*
+        for (customer <- persistence findCustomerById customerId firstOption)
+          yield {
+            persistence.insertDeposit(customer, amount, reference)
+          }
+*/
+
+        ???
     }
   }
 }
 
-class ApplicationFeatures(val persistence: UnifiedPersistence,
+class ApplicationFeatures(val persistence: Domain.PersistenceModule.UnifiedPersistence,
                           val database: JdbcBackend#Database) extends FeatureUniverse
   with AuthenticationFeatures
   with CustomerFeatures
   with TransactionFeatures
   with DepositFeatures
-
-/*
-
-{
-  import application.Parcel._
-
-
-  // How does this whole thing deal with errors?
-  // Make everything return Either[<Error type>, <Result type>]?
-
-
-  def newCustomer(name: String, email: String): Parcel[String, persistence.Customer]
-
-  // What if it fails - how does it report it?
-  //   Either[String, persistence.Deposit]
-  //   Validation?
-  def newDeposit(valueDate: Date, amount: Int): Parcel[String, persistence.Deposit]
-  def deposits(from: Date, through: Date): Parcel[String, Seq[persistence.Deposit]]
-  def deposit(id: Int): Parcel[String, persistence.Deposit]
-}
-*/

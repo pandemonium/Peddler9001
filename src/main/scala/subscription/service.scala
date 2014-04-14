@@ -5,23 +5,28 @@ package service
 
 import akka.actor._
 import akka.io.IO
-import paermar.application.ApplicationFeatures
-import paermar.model.Domain
-import paermar.model.Domain.UnifiedPersistence
-import spray.can.Http
+
 import scala.concurrent.{Promise, ExecutionContext, Future}
-import scala.slick.jdbc.JdbcBackend._
-import scala.slick.driver.MySQLDriver
-import spray.json._
-import spray.httpx.SprayJsonSupport._
-import org.joda.time.format.ISODateTimeFormat
-import org.joda.time.DateTime
-import spray.httpx.unmarshalling.{MalformedContent, Deserializer, FromStringDeserializer, DeserializationError}
 import scala.util.control.NonFatal
 
+import scala.slick.jdbc.JdbcBackend._
+import scala.slick.driver.MySQLDriver
+
+import org.joda.time.format.ISODateTimeFormat
+import org.joda.time.DateTime
+
+import spray.can.Http
+import spray.json._
+import spray.httpx.SprayJsonSupport._
+import spray.httpx.unmarshalling.{MalformedContent, FromStringDeserializer}
+import spray.routing._, Directives._
+
 object Service {
-  import spray.routing._
-  import Directives._
+  import paermar.application.ApplicationFeatures
+  import paermar.model.Domain.PersistenceModule._
+  import paermar.model.Domain.TransactionsModule._
+  import paermar.model.Domain.DepositsModule._
+  import paermar.model.Domain.CustomersModule._
 
   trait ServiceUniverse {
     val protocol: Protocol
@@ -34,16 +39,15 @@ object Service {
   }
 
   class Protocol(val features: ApplicationFeatures) extends DefaultJsonProtocol {
-    import features.persistence._, Domain._, application.Parcel._
+    import application.Parcel._
+    import TransactionType._
 
-    type UP = UnifiedPersistence
-
-    implicit object String2DateFormat extends FromStringDeserializer[DateTime] {
+    implicit object _StringToDateTime extends FromStringDeserializer[DateTime] {
       def apply(source: String) =
-        try
-          Right(_DateTimeFormat.Format parseDateTime source)
+        try Right(_DateTimeFormat.Format parseDateTime source)
         catch {
-          case NonFatal(x) ⇒ Left(MalformedContent(x.getMessage))
+          case NonFatal(x) ⇒
+            Left(MalformedContent(s"Un-parsable date `$source`", x))
         }
     }
 
@@ -51,32 +55,32 @@ object Service {
       final val Format = ISODateTimeFormat.dateTimeNoMillis.withZoneUTC
 
       def read(json: JsValue): DateTime = json match {
-        case JsString(s) ⇒
-          // todo: handle errors
-          Format parseDateTime s
+        // todo: handle errors
+        case JsString(source) ⇒ Format parseDateTime source
       }
 
-      def write(value: DateTime): JsValue = JsString(Format.print(value))
+      def write(value: DateTime): JsValue = JsString(Format print value)
     }
 
     case class SingletonMapExtractor[K, V](key: K) {
       def unapply(m: Map[K, V]) = m get key
     }
 
-    implicit object _TransactionTypeFormat extends JsonFormat[TransactionType.TransactionType] {
-      def read(source: JsValue): TransactionType.TransactionType = source match {
-        case JsString("Debit") ⇒ TransactionType.Debit
-        case JsString("Credit") ⇒ TransactionType.Credit
+    implicit object _TransactionTypeFormat extends JsonFormat[TransactionType] {
+      def read(source: JsValue): TransactionType = source match {
+        case JsString("Debit")  ⇒ Debit
+        case JsString("Credit") ⇒ Credit
       }
-      def write(`type`: TransactionType.TransactionType) = `type` match {
-        case TransactionType.Debit  ⇒ JsString("Debit")
-        case TransactionType.Credit ⇒ JsString("Credit")
+
+      def write(`type`: TransactionType) = `type` match {
+        case Debit  ⇒ JsString("Debit")
+        case Credit ⇒ JsString("Credit")
       }
     }
 
-    implicit val _depositFormat:  RootJsonFormat[UP#Deposit]  = jsonFormat9(Deposit)
-    implicit val _customerFormat: RootJsonFormat[UP#Customer] = jsonFormat3(Customer)
-    implicit val _transactionFormat: RootJsonFormat[UP#Transaction] = jsonFormat6(Transaction)
+    implicit val _depositFormat     = jsonFormat9(Deposit)
+    implicit val _customerFormat    = jsonFormat3(Customer)
+    implicit val _transactionFormat = jsonFormat6(Transaction)
 
     implicit def _ParcelFormat[X: JsonFormat, A: JsonFormat] = new RootJsonFormat[X ⊕ A] {
       val Success = SingletonMapExtractor[String, JsValue]("success")
@@ -149,10 +153,10 @@ object Service {
     private def thisRoute = path("transactions") {
       get {
         parameters('from.as[DateTime], 'through.as[DateTime]) { (from, through) ⇒
-          complete(application.transactions(from, through))
+          complete(application.transactionsSpanning(from, through))
         }
       } ~ post {
-        entity(as[UP#Transaction]) { transaction ⇒
+        entity(as[Transaction]) { transaction ⇒
           val created = application addTransaction transaction
 
           complete(created)
@@ -169,12 +173,17 @@ object Service {
     private def thisRoute = path("deposits") {
       get {
         parameters('from.as[DateTime], 'through.as[DateTime]) { (from, through) ⇒
-          complete(application.deposits(from, through))
+          complete(application.depositsSpanning(from, through))
         }
       } ~ post {
-        entity(as[UP#Deposit]) { deposit ⇒
-          complete(application addDeposit deposit)
+        ???
+/*
+        entity(as[AF#CashDeposit]) { (deposit: AF#CashDeposit)⇒
+          val x = application.addDeposit(deposit)
+
+          complete(x)
         }
+*/
       }
     }
   }
