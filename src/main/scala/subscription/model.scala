@@ -378,7 +378,8 @@ object Domain {
 
   object PersistenceModule {
     import CustomersModule._, TransactionsModule._, DepositsModule._,
-           ProductsModule._, AccountsModule._, SubscriptionsModule._
+           ProductsModule._, AccountsModule._, SubscriptionsModule._,
+           OrdersModule._
 
     class UnifiedPersistence(val profile: JdbcProfile) extends Foundation
       with CustomersAspect
@@ -387,6 +388,7 @@ object Domain {
       with ProductsAspect
       with AccountsAspect
       with SubscriptionsAspect
+      with OrdersAspect
   }
 }
 

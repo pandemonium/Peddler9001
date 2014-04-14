@@ -25,7 +25,8 @@ object Service {
   import paermar.application.ApplicationFeatures
   import paermar.model.Domain._
   import PersistenceModule._, TransactionsModule._, DepositsModule._,
-         CustomersModule._, ProductsModule._, SubscriptionsModule._
+         CustomersModule._, ProductsModule._, SubscriptionsModule._,
+         OrdersModule._
 
   trait ServiceUniverse {
     val protocol: Protocol
@@ -39,7 +40,7 @@ object Service {
 
   class Protocol(val features: ApplicationFeatures) extends DefaultJsonProtocol {
     import application.Parcel._
-    import TransactionType._
+    import TransactionType._, OrderStatus._
 
     implicit object _StringToDateTime extends FromStringDeserializer[DateTime] {
       def apply(source: String) =
@@ -77,6 +78,15 @@ object Service {
       }
     }
 
+    implicit object _OrderStatusFormat extends JsonFormat[OrderStatus] {
+      def read(source: JsValue): OrderStatus = source match {
+        case JsString("New") ⇒ New
+      }
+      def write(status: OrderStatus): JsValue = status match {
+        case New ⇒ JsString("New")
+      }
+    }
+
     implicit val _cashPaymentFormat  = jsonFormat3(CashPayment)
     implicit val _bankGiroFormat     = jsonFormat5(BankGiroVerification)
     implicit val _depositFormat      = jsonFormat9(Deposit)
@@ -84,6 +94,7 @@ object Service {
     implicit val _transactionFormat  = jsonFormat6(Transaction)
     implicit val _productFormat      = jsonFormat5(Product)
     implicit val _subscriptionFormat = jsonFormat5(Subscription)
+    implicit val _orderFormat        = jsonFormat5(Order)
 
     implicit def _ParcelFormat[X: JsonFormat, A: JsonFormat] = new RootJsonFormat[X ⊕ A] {
       val Success = SingletonMapExtractor[String, JsValue]("success")
@@ -216,6 +227,18 @@ object Service {
     }
   }
 
+  trait OrdersRoute extends RouteSource { self: ServiceUniverse ⇒
+    import protocol._
+
+    override abstract def route = thisRoute ~ super.route
+
+    private def thisRoute = path("orders") {
+      get {
+        complete(application.orders)
+      }
+    }
+  }
+
   trait ServicePlatform extends ServiceUniverse with RouteSource {
     def route: Route = reject
   }
@@ -228,6 +251,7 @@ object Service {
     with DepositRoute
     with ProductRoute
     with SubscriptionsRoute
+    with OrdersRoute
 
   case class Endpoint(host: String, port: Int)
 

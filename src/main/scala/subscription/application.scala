@@ -203,6 +203,7 @@ trait SubscriptionFeatures { self: FeatureUniverse ⇒
   import Parcel._
   import SubscriptionsModule._
 
+  // Date span here too?
   def subscriptions: String ⊕ Seq[Subscription] = databaseMap { implicit session ⇒
     persistence.subscriptions.buildColl.successfulParcel
   }
@@ -220,6 +221,16 @@ trait SubscriptionFeatures { self: FeatureUniverse ⇒
   }
 }
 
+trait OrderFeatures { self: FeatureUniverse ⇒
+  import persistence.profile.simple._
+  import Parcel._
+  import OrdersModule._
+
+  def orders: String ⊕ Seq[Order] = databaseMap { implicit session ⇒
+    persistence.orders.buildColl.successfulParcel
+  }
+}
+
 class ApplicationFeatures(val persistence: Domain.PersistenceModule.UnifiedPersistence,
                           val database: JdbcBackend#Database) extends FeatureUniverse
   with AuthenticationFeatures
@@ -228,3 +239,4 @@ class ApplicationFeatures(val persistence: Domain.PersistenceModule.UnifiedPersi
   with DepositFeatures
   with ProductFeatures
   with SubscriptionFeatures
+  with OrderFeatures
