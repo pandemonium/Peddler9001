@@ -83,17 +83,17 @@ object WATable {
       }
     }
 
-    case class Column(index: Int, name: String, `type`: String)
-    case class DataStructure[T: JsonFormat](cols: Seq[Column], rows: Seq[T])
+    case class Column(index: Int, `type`: String)
+    case class DataStructure[T: JsonFormat](cols: Map[String, Column], rows: Seq[T])
 
-    implicit val _columnFormat                       = jsonFormat3(Column)
+    implicit val _columnFormat                       = jsonFormat2(Column)
     implicit def _dataStructureFormat[T: JsonFormat] = jsonFormat2(DataStructure[T])
 
     def schema[T: ClassManifest] = classManifest[T] match {
       case manifest ⇒
-        extractFieldNames(manifest).zipWithIndex map { case (fieldName, index) ⇒
-          Column(index + 1, fieldName, deduceType(manifest.erasure, fieldName))
-        }
+        (extractFieldNames(manifest).zipWithIndex map { case (fieldName, index) ⇒
+          fieldName -> Column(index + 1, deduceType(manifest.erasure, fieldName))
+        }).toMap
     }
 
     implicit def asDataStructure[T: JsonFormat: ClassManifest](data: Seq[T]): DataStructure[T] =

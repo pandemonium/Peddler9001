@@ -111,10 +111,12 @@
                 // Grab buttons
                 var buttons = $('table.watable button');
                 buttons.addClass('btn btn-default');
-            }
+            },
+
+            url: "http://localhost:8080/customers?format=watable"
         }).data('WATable');
 
-        waTable.setData({
+/*        waTable.setData({
             cols: {
                 id: {
                     index:    1,
@@ -150,7 +152,7 @@
                 },
             ]
         });
-
+    */
     });
 </script>
 </body>

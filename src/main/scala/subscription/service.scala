@@ -176,7 +176,7 @@ object Service {
           format match {
             case Some("watable") ⇒
 
-              application.customers.fold(_    ⇒ DataStructure(Seq.empty, Seq.empty[String]),
+              application.customers.fold(_    ⇒ DataStructure(Map.empty, Seq.empty[String]),
                                          data ⇒ ctx.complete[DataStructure[Customer]](data))
 
 
