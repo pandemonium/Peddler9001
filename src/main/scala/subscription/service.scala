@@ -15,6 +15,7 @@ RootJsonFormat to a WATableDataStructure?
 import akka.actor._
 import akka.io.IO
 
+import paermar.watable.WATable.DataStructureProtocol.DataStructure
 import scala.concurrent.{Promise, ExecutionContext, Future}
 import scala.util.control.NonFatal
 
@@ -171,7 +172,18 @@ object Service {
 
     private def thisRoute = path("customers") {
       get {
-        complete(application.customers)
+        parameter('format ?) { format ⇒ ctx ⇒
+          format match {
+            case Some("watable") ⇒
+
+              application.customers.fold(_    ⇒ DataStructure(Seq.empty, Seq.empty[String]),
+                                         data ⇒ ctx.complete[DataStructure[Customer]](data))
+
+
+            case _               ⇒
+              ctx complete application.customers
+          }
+        }
       } ~ post {
         entity(as[String]) { name ⇒
           complete(application addCustomer name)
