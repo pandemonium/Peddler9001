@@ -34,6 +34,7 @@ object Service {
     val protocol: Protocol
     val application: ApplicationFeatures
     implicit def executionContext: ExecutionContext
+    implicit def actorRefFactory: ActorContext
   }
 
   trait ResponseSupport {
@@ -274,6 +275,14 @@ object Service {
     }
   }
 
+  trait WebResourceRoute extends RouteSource { self: ServiceUniverse ⇒
+    override abstract def route = thisRoute ~ super.route
+
+    private def thisRoute = pathPrefix("") {
+      getFromResourceDirectory("web-root")
+    }
+  }
+
   trait ServicePlatform extends ServiceUniverse with RouteSource {
     def route: Route = reject
   }
@@ -287,6 +296,7 @@ object Service {
     with ProductRoute
     with SubscriptionsRoute
     with OrdersRoute
+    with WebResourceRoute
 
   case class Endpoint(host: String, port: Int)
 
