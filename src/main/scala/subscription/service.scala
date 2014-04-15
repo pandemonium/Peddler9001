@@ -3,6 +3,15 @@ package service
 
 // Ofrenda2014
 
+
+/*
+Somehow transform a plain Json-list into one that is compatible
+with a WATable Data Structure (it has cols and rows according to
+a specifed format). Ought to be possible to transform a
+RootJsonFormat to a WATableDataStructure?
+*/
+
+
 import akka.actor._
 import akka.io.IO
 
