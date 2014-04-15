@@ -77,11 +77,17 @@
         <h1>Navbar example</h1>
         <p>This example is a quick exercise to illustrate how the default, static and fixed to top navbar work. It includes the responsive CSS and HTML, so it also adapts to your viewport and device.</p>
         <p>To see the difference between static and fixed top navbars, just scroll.</p>
+
+        <p>Table source: <input id="sourceUrl" type="text" name="source" value="http://localhost:8080/customers?format=watable"></p>
+        <a class="btn btn-lg btn-primary" href="#" role="button" onclick="changeUrl()">Get order</a></p>
+
+
         <p>
             <a class="btn btn-lg btn-primary" href="../../components/#navbar" role="button">View navbar docs &raquo;</a>
             <a class="btn btn-lg btn-primary" href="#" role="button" onclick="getOrderById(1)">Get order</a></p>
         </p>
     </div>
+
 
     <div id="div1" style="width:auto"></div>
 
@@ -113,46 +119,21 @@
                 buttons.addClass('btn btn-default');
             },
 
-            url: "http://localhost:8080/customers?format=watable"
+            url: "http://localhost:8080/customers?format=watable",
+
+            actions: {
+                custom: [
+                    $('<a href="#" class="refresh"><i class="icon-refresh"></i>&nbsp;Refresh</a>')
+                ]
+              }
         }).data('WATable');
 
-/*        waTable.setData({
-            cols: {
-                id: {
-                    index:    1,
-                    type:     "string",
-                    friendly: "Id"
-                },
-                name: {
-                    index:    2,
-                    type:     "string",
-                    friendly: "Name"
-                },
-                created: {
-                    index:    1,
-                    type:     "date",
-                    friendly: "Created"
-                }
-            },
-            rows: [
-                {
-                    id:      1,
-                    name:    "Arne Anka",
-                    created: new Date()
-                },
-                {
-                    id:      2,
-                    name:    "Mikael Gullander",
-                    created: new Date()
-                },
-                {
-                    id:      3,
-                    name:    "Josephine Kvist",
-                    created: new Date()
-                },
-            ]
+        $('body').on('click', '.refresh', function(e) {
+            e.preventDefault();
+            waTable.option("url", $('#sourceUrl').val());
+            waTable.update();
+            alert("did refresh");
         });
-    */
     });
 </script>
 </body>

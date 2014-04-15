@@ -176,6 +176,9 @@ object Service {
           format match {
             case Some("watable") ⇒
 
+              // Todo: invent way to turn the failure side of a parcel into
+              // a useful DataStructure (or something) so that the client side
+              // can present some kind of error box.
               application.customers.fold(_    ⇒ DataStructure(Map.empty, Seq.empty[String]),
                                          data ⇒ ctx.complete[DataStructure[Customer]](data))
 
@@ -274,7 +277,13 @@ object Service {
 
     private def collectionRoute = pathEnd {
       get {
-        complete(application.orders)
+        // This has turned into quite the kludge
+        parameter('format ?) { format ⇒ ctx ⇒
+          format.fold(ctx complete application.orders) { fmt ⇒
+            application.orders.fold(_    ⇒ DataStructure(Map.empty, Seq.empty[String]),
+                                    data ⇒ ctx.complete[DataStructure[Order]](data))
+          }
+        }
       } ~ post {
         entity(as[NewOrder]) { order ⇒
           complete(application addOrder order)
