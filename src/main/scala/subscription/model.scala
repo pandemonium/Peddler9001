@@ -247,6 +247,10 @@ object Domain {
       }
     }
 
+    sealed trait OrderInsert
+    case class NewOrder(customerId: Int, comment: Option[String])
+      extends OrderInsert
+
     case class Order(id: Option[Int],
                      customerId: Int,
                      created: DateTime,
@@ -294,19 +298,24 @@ object Domain {
           (OrderLine.tupled, OrderLine.unapply)
       }
 
-      val orders = TableQuery[Orders]
-      val orderLines = TableQuery[OrderLines]
+      val orders           = TableQuery[Orders]
+      val orderInserts     = orders returning orders.map(_.id)
+      val orderLines       = TableQuery[OrderLines]
+      val orderLineInserts = orderLines returning orderLines.map(_.id)
 
       def insertOrder(customer: Customer, comment: Option[String])
                      (implicit s: Session) =
-        orders += Order(None, customer.id.get, currentDateTime, New, comment)
+        orderInserts += Order(None, customer.id.get, currentDateTime, New, comment)
 
       def insertOrderLine(order: Order,
                           product: Product,
                           quantity: Int,
                           description: Option[String])
                          (implicit s: Session) =
-        orderLines += OrderLine(None, order.id.get, product.id.get, quantity, description)
+        orderLineInserts += OrderLine(None, order.id.get, product.id.get, quantity, description)
+
+      def findOrderById     = orders.findBy(_.id)
+      def findOrderLineById = orderLines.findBy(_.id)
     }
   }
 

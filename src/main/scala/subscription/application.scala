@@ -229,6 +229,27 @@ trait OrderFeatures { self: FeatureUniverse ⇒
   def orders: String ⊕ Seq[Order] = databaseMap { implicit session ⇒
     persistence.orders.buildColl.successfulParcel
   }
+
+  def addOrder(order: OrderInsert): String ⊕ Order = databaseMap { implicit session ⇒
+    parcelFromOption(order match {
+      case NewOrder(customerId, comment) ⇒
+        for {
+          customer <- persistence findCustomerById customerId firstOption
+
+          orderId   = persistence.insertOrder(customer, comment)
+          order    <- persistence findOrderById orderId firstOption
+        } yield order
+    }, "orders.created_yet_not_found")
+  }
+
+  def order(id: Int): String ⊕ Option[Order] = databaseMap { implicit session ⇒
+    val order = persistence findOrderById id firstOption
+
+    // Still no real error handling. An exception bubbles all the way
+    // up as an Internal Server Error.
+
+    order.successfulParcel
+  }
 }
 
 class ApplicationFeatures(val persistence: Domain.PersistenceModule.UnifiedPersistence,

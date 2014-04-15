@@ -18,8 +18,10 @@ import org.joda.time.DateTime
 import spray.can.Http
 import spray.json._
 import spray.httpx.SprayJsonSupport._
+import spray.httpx.marshalling.Marshaller
 import spray.httpx.unmarshalling.{MalformedContent, FromStringDeserializer}
 import spray.routing._, Directives._
+import spray.http.StatusCodes._
 
 object Service {
   import paermar.application.ApplicationFeatures
@@ -28,10 +30,22 @@ object Service {
          CustomersModule._, ProductsModule._, SubscriptionsModule._,
          OrdersModule._
 
-  trait ServiceUniverse {
+  trait ServiceUniverse extends ResponseSupport {
     val protocol: Protocol
     val application: ApplicationFeatures
     implicit def executionContext: ExecutionContext
+  }
+
+  trait ResponseSupport {
+    def internalServerError(ctx: RequestContext)
+                           (description: String) =
+      ctx.complete(InternalServerError, description)
+
+    def completeEntity[A: Marshaller](ctx: RequestContext)
+                                     (content: Option[A]) = content match {
+      case Some(entity) ⇒ ctx complete entity
+      case _            ⇒ ctx complete NotFound
+    }
   }
 
   trait RouteSource {
@@ -95,6 +109,7 @@ object Service {
     implicit val _productFormat      = jsonFormat5(Product)
     implicit val _subscriptionFormat = jsonFormat5(Subscription)
     implicit val _orderFormat        = jsonFormat5(Order)
+    implicit val _orderInsertFormat  = jsonFormat2(NewOrder)
 
     implicit def _ParcelFormat[X: JsonFormat, A: JsonFormat] = new RootJsonFormat[X ⊕ A] {
       val Success = SingletonMapExtractor[String, JsValue]("success")
@@ -148,10 +163,8 @@ object Service {
       get {
         complete(application.customers)
       } ~ post {
-        entity(as[String]) { name ⇒ ctx ⇒
-          val customer = application addCustomer name
-
-          ctx complete customer
+        entity(as[String]) { name ⇒
+          complete(application addCustomer name)
         }
       }
     }
@@ -229,12 +242,34 @@ object Service {
 
   trait OrdersRoute extends RouteSource { self: ServiceUniverse ⇒
     import protocol._
+    import spray.http.StatusCodes._
 
     override abstract def route = thisRoute ~ super.route
 
-    private def thisRoute = path("orders") {
+    private def thisRoute = pathPrefix("orders") {
+      resourceRoute ~ collectionRoute
+    }
+
+    private def collectionRoute = pathEnd {
       get {
         complete(application.orders)
+      } ~ post {
+        entity(as[NewOrder]) { order ⇒
+          complete(application addOrder order)
+        }
+      }
+    }
+
+    private def resourceRoute = pathPrefix(IntNumber) { orderId ⇒
+      pathEnd {
+        get { ctx ⇒
+          (application order orderId).fold(internalServerError(ctx),
+                                           completeEntity(ctx))
+        }
+      } ~ pathSuffix("lines") {
+        get {
+          complete(s"order: $orderId / lines")
+        }
       }
     }
   }
