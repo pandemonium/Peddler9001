@@ -16,7 +16,7 @@ libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.4-SNAPSHOT"
 
 libraryDependencies += "com.typesafe.slick" %%  "slick" % "2.0.1"
 
-libraryDependencies += "mysql" % "mysql-connector-java" % "5.1.29"
+libraryDependencies += "mysql" % "mysql-connector-java" % "5.1.30"
 
 libraryDependencies += "io.spray" % "spray-routing" % "1.3.1"
 
