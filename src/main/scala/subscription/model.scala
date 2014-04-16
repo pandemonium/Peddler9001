@@ -144,6 +144,10 @@ object Domain {
                        transactionId: Option[Int],
                        comment: Option[String])
 
+    case class CreditCustomerDeposit(customerId: Int,
+                                     depositId: Int,
+                                     comment: Option[String])
+
     trait DepositsAspect extends Structure {
       self: PersistentUniverse with TransactionsAspect with CustomersAspect ⇒
       import profile.simple._
@@ -166,7 +170,7 @@ object Domain {
                   (Deposit.tupled, Deposit.unapply)
       }
 
-      val deposits = TableQuery[Deposits]
+      val deposits       = TableQuery[Deposits]
       val depositInserts = deposits returning deposits.map(_.id)
 
       override abstract def description = deposits.ddl ++ super.description
@@ -186,6 +190,14 @@ object Domain {
                         comment: Option[String])
                        (implicit s: Session): Int =
         depositInserts += Deposit(None, valueDate, currentDateTime, amount, reference, payer, avi, transactionId, comment)
+
+      def setDepositTransaction(deposit: Deposit, transactionId: Int)
+                               (implicit session: Session) = {
+        val projection = for (d <- deposits if d.id === deposit.id.get)
+                           yield d.transactionId
+
+        projection update transactionId
+      }
 
       def depositsSpanning(from: DateTime, through: DateTime) = for {
         d <- deposits

@@ -121,6 +121,7 @@ object Service {
     implicit val _subscriptionFormat = jsonFormat5(Subscription)
     implicit val _orderFormat        = jsonFormat5(Order)
     implicit val _orderInsertFormat  = jsonFormat2(NewOrder)
+    implicit val _claimFormat        = jsonFormat3(CreditCustomerDeposit)
 
     implicit def _ParcelFormat[X: JsonFormat, A: JsonFormat] = new RootJsonFormat[X ⊕ A] {
       val Success = SingletonMapExtractor[String, JsValue]("success")
@@ -200,7 +201,11 @@ object Service {
 
     override abstract def route = thisRoute ~ super.route
 
-    private def thisRoute = path("transactions") {
+    private def thisRoute = pathPrefix("transactions") {
+      uniqueRoute ~ collectionRoute
+    }
+
+    private def collectionRoute = pathEnd {
       get {
         parameters('from.as[DateTime], 'through.as[DateTime]) { (from, through) ⇒
           complete(application.transactionsSpanning(from, through))
@@ -211,6 +216,12 @@ object Service {
         }
       }
     }
+
+    private def uniqueRoute = pathPrefix(IntNumber) { transactionId ⇒
+      get {
+        complete(application transaction transactionId)
+      }
+    }
   }
 
   trait DepositRoute extends RouteSource { self: ServiceUniverse ⇒
@@ -218,7 +229,11 @@ object Service {
 
     override abstract def route = thisRoute ~ super.route
 
-    private def thisRoute = path("deposits") {
+    private def thisRoute = pathPrefix("deposits") {
+      uniqueRoute ~ collectionRoute
+    }
+
+    private def collectionRoute = pathEnd {
       get {
         parameters('from.as[DateTime], 'through.as[DateTime]) { (from, through) ⇒
           complete(application.depositsSpanning(from, through))
@@ -228,6 +243,22 @@ object Service {
           complete(application addDeposit payment)
         } ~ entity(as[BankGiroVerification]) { payment ⇒
           complete(application addDeposit payment)
+        }
+      }
+    }
+
+    private def uniqueRoute = pathPrefix(IntNumber) { depositId ⇒
+      pathEnd {
+        get {
+          complete(application deposit depositId)
+        }
+      } ~ path("customer" / IntNumber) { customerId ⇒
+        put {
+            entity(as[Option[String]]) { comment ⇒
+              val credit = CreditCustomerDeposit(customerId, depositId, comment)
+
+              complete(application creditDepositToCustomer credit)
+            }
         }
       }
     }
@@ -272,7 +303,7 @@ object Service {
     override abstract def route = thisRoute ~ super.route
 
     private def thisRoute = pathPrefix("orders") {
-      resourceRoute ~ collectionRoute
+      uniqueRoute ~ collectionRoute
     }
 
     private def collectionRoute = pathEnd {
@@ -291,7 +322,7 @@ object Service {
       }
     }
 
-    private def resourceRoute = pathPrefix(IntNumber) { orderId ⇒
+    private def uniqueRoute = pathPrefix(IntNumber) { orderId ⇒
       pathEnd {
         get { ctx ⇒
           (application order orderId).fold(internalServerError(ctx),
@@ -314,7 +345,7 @@ object Service {
   }
 
   trait ServicePlatform extends ServiceUniverse with RouteSource {
-    def route: Route = reject
+    def route: Route = complete(NotFound)
   }
 
   trait ServiceRouteConcatenation extends ServicePlatform

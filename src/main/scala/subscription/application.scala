@@ -144,12 +144,18 @@ trait TransactionFeatures { self: FeatureUniverse with CustomerFeatures ⇒
       case _       ⇒ failed("transaction.created_yet_not_found")
     }
   }
+
+  def transaction(id: Int): String ⊕ Option[Transaction] = databaseMap { implicit session ⇒
+    val transaction = persistence findTransactionById id firstOption
+
+    transaction.successfulParcel
+  }
 }
 
 trait DepositFeatures { self: FeatureUniverse with TransactionFeatures ⇒
   import persistence.profile.simple._
   import Parcel._
-  import DepositsModule._, TransactionsModule._
+  import DepositsModule._, TransactionsModule._, CustomersModule._
 
   def depositsSpanning(from: DateTime, through: DateTime): String ⊕ Seq[Deposit] = databaseMap { implicit session ⇒
     persistence.depositsSpanning(from, through).buildColl.successfulParcel
@@ -176,6 +182,29 @@ trait DepositFeatures { self: FeatureUniverse with TransactionFeatures ⇒
 
         parcelFromOption(deposit, "deposit.created_yet_not_found")
     }
+  }
+
+  def deposit(id: Int): String ⊕ Option[Deposit] = databaseMap { implicit session ⇒
+    val deposit = persistence findDepositById id firstOption
+
+    deposit.successfulParcel
+  }
+
+  def creditDepositToCustomer(credit: CreditCustomerDeposit): String ⊕ Option[Transaction] = databaseMap { implicit session ⇒
+
+    // What error conditions are there here?
+    // Can there ever be a problem with a deposit being claimed first by
+    // customer A and later by customer B? What happens to their net dept?
+
+    val transaction = for {
+      deposit       <- persistence findDepositById credit.depositId firstOption;
+      customer      <- persistence findCustomerById credit.customerId firstOption;
+      transactionId  = persistence.insertCredit(customer, deposit.amount, credit.comment)
+      transaction    = persistence findTransactionById transactionId firstOption;
+      _              = persistence.setDepositTransaction(deposit, transactionId)
+    } yield transaction
+
+    parcelFromOption(transaction, "deposit.crediting_deposit_to_customer_failed")
   }
 }
 
@@ -251,6 +280,9 @@ trait OrderFeatures { self: FeatureUniverse ⇒
     order.successfulParcel
   }
 }
+
+// I should really combine application with model as there's no real
+// gain at the moment.
 
 class ApplicationFeatures(val persistence: Domain.PersistenceModule.UnifiedPersistence,
                           val database: JdbcBackend#Database) extends FeatureUniverse
