@@ -3,6 +3,7 @@ package watable
 
 import paermar.model.Domain.OrdersModule.{OrderStatus, Order}
 import java.lang.reflect.Field
+import scala.reflect.ClassTag
 
 object WATable {
   val source =
@@ -63,7 +64,9 @@ object WATable {
 
 
   import spray.json._
-  object DataStructureProtocol extends DefaultJsonProtocol {
+  object TransportFormatProtocol extends DefaultJsonProtocol {
+
+    // See if I could use Scala picklers instead?
 
     /**
      * A different strategy would be to actually generate the json list
@@ -84,30 +87,38 @@ object WATable {
     }
 
     case class Column(index: Int, `type`: String)
-    case class DataStructure[T: JsonFormat](cols: Map[String, Column], rows: Seq[T])
+    case class Transfer[T: JsonFormat](cols: Map[String, Column], rows: Seq[T])
 
-    implicit val _columnFormat                       = jsonFormat2(Column)
-    implicit def _dataStructureFormat[T: JsonFormat] = jsonFormat2(DataStructure[T])
+    implicit val _columnFormat                   = jsonFormat2(Column)
+    implicit def _transportFormat[T: JsonFormat] = jsonFormat2(Transfer[T])
 
-    def schema[T: ClassManifest] = classManifest[T] match {
-      case manifest ⇒
-        (extractFieldNames(manifest).zipWithIndex map { case (fieldName, index) ⇒
-          fieldName -> Column(index + 1, deduceType(manifest.erasure, fieldName))
+    def schema[T: ClassTag] = reflect.classTag[T] match {
+      case tag ⇒
+        (extractFieldNames(tag).zipWithIndex map { case (fieldName, index) ⇒
+          fieldName -> Column(index + 1, deduceColumnType(tag.runtimeClass, fieldName))
         }).toMap
     }
 
-    implicit def asDataStructure[T: JsonFormat: ClassManifest](data: Seq[T]): DataStructure[T] =
-      DataStructure(schema[T], data)
+    implicit def asTransfer[T: JsonFormat: ClassTag](data: Seq[T]): Transfer[T] =
+      Transfer(schema[T], data)
 
-    def deduceType(erasure: Class[_], fieldName: String) = erasure getDeclaredField fieldName match {
+    def deduceColumnType(runtimeClass: Class[_], field: String) = runtimeClass getDeclaredField field match {
       case ColumnTypeName(name) ⇒ name
     }
   }
 }
 
 object RunningMan extends App {
-  case class Foo(x: Int, y: String)
-  val x = WATable.DataStructureProtocol.schema[Order]
+  import scala.pickling._
+  import scala.pickling.json._
+  import WATable.TransportFormatProtocol._
 
-  x foreach println
+  object Formats extends spray.json.DefaultJsonProtocol {
+    implicit val _fooFormat = jsonFormat2(Foo)
+  }
+
+  case class Foo(x: Int, y: String)
+
+  import Formats._
+  println((Seq(Foo(1, "2"), Foo(3, "4")): Transfer[Foo]).toJson)
 }

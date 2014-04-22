@@ -15,7 +15,7 @@ RootJsonFormat to a WATableDataStructure?
 import akka.actor._
 import akka.io.IO
 
-import paermar.watable.WATable.DataStructureProtocol.DataStructure
+import paermar.watable.WATable.TransportFormatProtocol.Transfer
 import scala.concurrent.{Promise, ExecutionContext, Future}
 import scala.util.control.NonFatal
 
@@ -180,8 +180,8 @@ object Service {
               // Todo: invent way to turn the failure side of a parcel into
               // a useful DataStructure (or something) so that the client side
               // can present some kind of error box.
-              application.customers.fold(_    ⇒ DataStructure(Map.empty, Seq.empty[String]),
-                                         data ⇒ ctx.complete[DataStructure[Customer]](data))
+              application.customers.fold(_    ⇒ Transfer(Map.empty, Seq.empty[String]),
+                                         data ⇒ ctx.complete[Transfer[Customer]](data))
 
 
             case _               ⇒
@@ -311,8 +311,8 @@ object Service {
         // This has turned into quite the kludge
         parameter('format ?) { format ⇒ ctx ⇒
           format.fold(ctx complete application.orders) { fmt ⇒
-            application.orders.fold(_    ⇒ DataStructure(Map.empty, Seq.empty[String]),
-                                    data ⇒ ctx.complete[DataStructure[Order]](data))
+            application.orders.fold(_    ⇒ Transfer(Map.empty, Seq.empty[String]),
+                                    data ⇒ ctx.complete[Transfer[Order]](data))
           }
         }
       } ~ post {
