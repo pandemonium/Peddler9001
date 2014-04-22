@@ -672,8 +672,15 @@
             $.ajax({
                 url: priv.options.url,
                 type: priv.options.urlPost ? 'POST' : 'GET',
-                dataType: 'json',
+//                dataType: 'json',
+/*
+                accept: "application/json; charset=utf-8",
                 contentType: "application/json; charset=utf-8",
+*/
+                headers: {
+                    Accept : "application/json; charset=utf-8",
+                    "Content-Type": "application/json; charset=utf-8"
+                },
                 data: priv.options.urlData,
                 async: true,
                 success: function (data) {
