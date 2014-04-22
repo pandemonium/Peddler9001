@@ -275,7 +275,6 @@ object Domain {
                          quantity: Int,
                          description: Option[String])
 
-
     trait OrdersAspect extends Structure {
       self: PersistentUniverse with CustomersAspect with ProductsAspect ⇒
       import profile.simple._
@@ -314,6 +313,11 @@ object Domain {
       val orderInserts     = orders returning orders.map(_.id)
       val orderLines       = TableQuery[OrderLines]
       val orderLineInserts = orderLines returning orderLines.map(_.id)
+
+      // Why can't this thing utilise the foreign key thing?
+      val orderCustomerJoin = for {
+        (order, customer) <- orders innerJoin customers on (_.customerId === _.id)
+      } yield (order, customer)
 
       def insertOrder(customer: Customer, comment: Option[String])
                      (implicit s: Session) =

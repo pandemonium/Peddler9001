@@ -314,8 +314,8 @@ object Service {
     }
 
     private def uiRoute = get { ctx ⇒
-      application.orders.fold(error  ⇒ ctx complete paermar.ui.html.errorPage(error),
-                              orders ⇒ ctx complete paermar.ui.html.orders(orders))
+      application.ordersWithCustomers.fold(error  ⇒ ctx complete paermar.ui.html.errorPage(error),
+                                           orders ⇒ ctx complete paermar.ui.html.orders(orders))
     }
 
     private def collectionRoute = pathEnd {

@@ -253,10 +253,14 @@ trait SubscriptionFeatures { self: FeatureUniverse ⇒
 trait OrderFeatures { self: FeatureUniverse ⇒
   import persistence.profile.simple._
   import Parcel._
-  import OrdersModule._
+  import OrdersModule._, CustomersModule._
 
   def orders: String ⊕ Seq[Order] = databaseMap { implicit session ⇒
     persistence.orders.buildColl.successfulParcel
+  }
+
+  def ordersWithCustomers: String ⊕ Seq[(Order, Customer)] = databaseMap { implicit session ⇒
+    persistence.orderCustomerJoin.buildColl.successfulParcel
   }
 
   def addOrder(order: OrderInsert): String ⊕ Order = databaseMap { implicit session ⇒
