@@ -32,6 +32,10 @@ import spray.httpx.marshalling.Marshaller
 import spray.httpx.unmarshalling.{MalformedContent, FromStringDeserializer}
 import spray.routing._, Directives._
 import spray.http.StatusCodes._
+import spray.httpx.TwirlSupport
+import spray.http.{MediaTypes, MediaType, HttpHeader}
+import spray.http.HttpHeaders.Accept
+import shapeless.HNil
 
 object Service {
   import paermar.application.ApplicationFeatures
@@ -52,11 +56,15 @@ object Service {
                            (description: String) =
       ctx.complete(InternalServerError, description)
 
-    def completeEntity[A: Marshaller](ctx: RequestContext)
+    def entityOrNotFound[A: Marshaller](ctx: RequestContext)
                                      (content: Option[A]) = content match {
       case Some(entity) ⇒ ctx complete entity
       case _            ⇒ ctx complete NotFound
     }
+
+    def accept(mediaType: MediaType) = headerValuePF({
+      case Accept(range) ⇒ range
+    }) require (_ exists (_ matches mediaType))
   }
 
   trait RouteSource {
@@ -296,14 +304,17 @@ object Service {
     }
   }
 
-  trait OrdersRoute extends RouteSource { self: ServiceUniverse ⇒
-    import protocol._
-    import spray.http.StatusCodes._
+  trait OrdersRoute extends RouteSource with TwirlSupport { self: ServiceUniverse ⇒
+    import protocol._, MediaTypes._
 
     override abstract def route = thisRoute ~ super.route
 
     private def thisRoute = pathPrefix("orders") {
-      uniqueRoute ~ collectionRoute
+      uiRoute ~ uniqueRoute ~ collectionRoute
+    }
+
+    private def uiRoute = accept(`text/html`) {
+      complete(paermar.ui.html.orders())
     }
 
     private def collectionRoute = pathEnd {
@@ -326,7 +337,7 @@ object Service {
       pathEnd {
         get { ctx ⇒
           (application order orderId).fold(internalServerError(ctx),
-                                           completeEntity(ctx))
+                                           entityOrNotFound(ctx))
         }
       } ~ pathSuffix("lines") {
         get {
@@ -337,6 +348,14 @@ object Service {
   }
 
   trait WebResourceRoute extends RouteSource { self: ServiceUniverse ⇒
+    override abstract def route = thisRoute ~ super.route
+
+    private def thisRoute = pathPrefix("") {
+      getFromResourceDirectory("web-root")
+    }
+  }
+
+  trait TwirRoute extends RouteSource { self: ServiceUniverse ⇒
     override abstract def route = thisRoute ~ super.route
 
     private def thisRoute = pathPrefix("") {
