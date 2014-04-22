@@ -2,6 +2,8 @@ name := "Paermar"
 
 version := "0.1"
 
+seq(Twirl.settings: _*)
+
 resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
 
 resolvers += "Typesafe Snapshot Repository" at "http://repo.typesafe.com/typesafe/snapshots/"
