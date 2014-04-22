@@ -1,29 +1,28 @@
+@(orders: Seq[paermar.model.Domain.OrdersModule.Order])
 @main {
-    <p>These are the orders!</p>
-    <div id="tableView"></div>
+    <div class="panel panel-primary">
+        <div class="panel-heading">Current orders</div>
+        <div class="panel-body">
+            <p>Lorem ipsum.</p>
 
-    <script type="text/javascript">
-        $(document).ready(function () {
-            setActive("orders");
-
-            var waTable = $('#tableView').WATable({
-                // options
-                tableCreated: function() {
-                    // BOOTSTRAP 3.0.2 FIX
-                    // Grab pagination elements
-                    var pagination = $('table.watable .pagination');
-
-                    // Change class of pagination
-                    // Detail admin theme format
-                    pagination.children('ul').attr('class', 'pagination');
-
-                    // Grab buttons
-                    var buttons = $('table.watable button');
-                    buttons.addClass('btn btn-default');
-                },
-
-                url: "/orders?format=watable",
-            }).data('WATable');
-        });
-    </script>
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Customer</th>
+                    <th>Comment</th>
+                </tr>
+                </thead>
+                <tbody>
+                @for(order <- orders) {
+                <tr>
+                    <td>@order.status</td>
+                    <td>@order.customerId</td>
+                    <td>@order.comment</td>
+                </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
 }
