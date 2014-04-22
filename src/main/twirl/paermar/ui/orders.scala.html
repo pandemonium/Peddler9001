@@ -1,8 +1,29 @@
 @main {
-   <p>These are the orders!</p>
-   <script type="text/javascript">
+    <p>These are the orders!</p>
+    <div id="tableView"></div>
+
+    <script type="text/javascript">
         $(document).ready(function () {
             setActive("orders");
+
+            var waTable = $('#tableView').WATable({
+                // options
+                tableCreated: function() {
+                    // BOOTSTRAP 3.0.2 FIX
+                    // Grab pagination elements
+                    var pagination = $('table.watable .pagination');
+
+                    // Change class of pagination
+                    // Detail admin theme format
+                    pagination.children('ul').attr('class', 'pagination');
+
+                    // Grab buttons
+                    var buttons = $('table.watable button');
+                    buttons.addClass('btn btn-default');
+                },
+
+                url: "/orders?format=watable",
+            }).data('WATable');
         });
-   </script>
+    </script>
 }

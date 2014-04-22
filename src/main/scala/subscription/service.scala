@@ -64,7 +64,7 @@ object Service {
 
     def accept(mediaType: MediaType) = headerValuePF({
       case Accept(range) ⇒ range
-    }) require (_ exists (_ matches mediaType))
+    }) require (_.head == mediaType)
   }
 
   trait RouteSource {
@@ -313,7 +313,7 @@ object Service {
       uiRoute ~ uniqueRoute ~ collectionRoute
     }
 
-    private def uiRoute = accept(`text/html`) {
+    private def uiRoute = get {
       complete(paermar.ui.html.orders())
     }
 
