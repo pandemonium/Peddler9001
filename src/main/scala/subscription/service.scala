@@ -355,14 +355,6 @@ object Service {
     }
   }
 
-  trait TwirRoute extends RouteSource { self: ServiceUniverse ⇒
-    override abstract def route = thisRoute ~ super.route
-
-    private def thisRoute = pathPrefix("") {
-      getFromResourceDirectory("web-root")
-    }
-  }
-
   trait ServicePlatform extends ServiceUniverse with RouteSource {
     def route: Route = complete(NotFound)
   }
