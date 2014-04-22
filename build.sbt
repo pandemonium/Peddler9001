@@ -2,6 +2,8 @@ name := "Paermar"
 
 version := "0.1"
 
+scalaVersion := "2.10.3"
+
 seq(Twirl.settings: _*)
 
 resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
@@ -14,7 +16,7 @@ resolvers += Resolver.sonatypeRepo("snapshots")
 
 resolvers += "spray repo" at "http://repo.spray.io"
 
-libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.4-SNAPSHOT"
+libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.3.2"
 
 libraryDependencies += "com.typesafe.slick" %%  "slick" % "2.0.1"
 
@@ -32,4 +34,4 @@ libraryDependencies += "org.joda" % "joda-convert" % "1.5"
 
 libraryDependencies += "com.github.tototoshi" %% "slick-joda-mapper" % "1.0.1"
 
-libraryDependencies += "org.scala-lang" %% "scala-pickling" % "0.8.0-SNAPSHOT"
+// libraryDependencies += "org.scala-lang" %% "scala-pickling" % "0.8.0-SNAPSHOT"

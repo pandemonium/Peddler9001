@@ -109,8 +109,6 @@ object WATable {
 }
 
 object RunningMan extends App {
-  import scala.pickling._
-  import scala.pickling.json._
   import WATable.TransportFormatProtocol._
 
   object Formats extends spray.json.DefaultJsonProtocol {
