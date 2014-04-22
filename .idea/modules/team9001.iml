@@ -46,6 +46,9 @@
     <orderEntry type="library" name="SBT: io.spray:spray-json_2.10:1.2.6" level="project" />
     <orderEntry type="library" name="SBT: org.scala-lang:scala-library:2.10.4" level="project" />
     <orderEntry type="library" name="SBT: mysql:mysql-connector-java:5.1.30" level="project" />
+    <orderEntry type="library" name="SBT: org.scala-lang:scala-pickling_2.10:0.8.0-SNAPSHOT" level="project" />
+    <orderEntry type="library" name="SBT: org.scala-lang:scala-reflect:2.10.3" level="project" />
+    <orderEntry type="library" name="SBT: org.scalamacros:quasiquotes_2.10:2.0.0-M8" level="project" />
   </component>
 </module>
 

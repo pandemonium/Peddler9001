@@ -29,3 +29,5 @@ libraryDependencies += "joda-time" % "joda-time" % "2.3"
 libraryDependencies += "org.joda" % "joda-convert" % "1.5"
 
 libraryDependencies += "com.github.tototoshi" %% "slick-joda-mapper" % "1.0.1"
+
+libraryDependencies += "org.scala-lang" %% "scala-pickling" % "0.8.0-SNAPSHOT"
