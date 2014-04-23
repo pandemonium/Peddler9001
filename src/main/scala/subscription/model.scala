@@ -483,7 +483,7 @@ object Domain {
         def unitType = column[UnitType]("unitType", O.NotNull)
         def units    = column[Int]("units", O.NotNull)
 
-        def * = (id ?, name, unitType, units) <> (Schedule.tupled, Schedule.unapply)
+        def * = (id ?, name, created, unitType, units) <> (Schedule.tupled, Schedule.unapply)
 
         implicit val unitTypes =
           MappedColumnType.base[UnitType, Int](_.value, UnitTypes.fromInt)
