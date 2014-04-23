@@ -408,7 +408,7 @@ object Domain {
     sealed trait TaskMemento
     case class PlainTask(name: String,
                          customerId: Option[Int],
-                         due: Option[DateTime])
+                         dueDate: Option[DateTime])
       extends TaskMemento
     case class ScheduledTask(name: String,
                              customerId: Option[Int],
@@ -535,7 +535,8 @@ object Domain {
                      due: Option[DateTime],
                      schedule: Option[Schedule])
                     (implicit s: Session) =
-        taskInserts += Task(None, name,
+        taskInserts += Task(None,
+                            name,
                             new DateTime,
                             Open,
                             new DateTime,
@@ -547,6 +548,24 @@ object Domain {
       def insertTaskComment(task: Task, comment: String)
                            (implicit s: Session) =
         taskActivityInserts += TaskActivity(None, task.id.get, new DateTime, comment)
+
+      // replace entire state
+      def replaceTask(id: Int)
+                     (name: String,
+                      status: TaskStatus,
+                      customer: Option[Customer],
+                      dueDate: Option[DateTime],
+                      schedule: Option[Schedule],
+                      comment: Option[String]) = ???
+
+      // partial update
+      def updateTask(id: Int)
+                    (name: Option[String],
+                     status: Option[TaskStatus],
+                     customer: Option[Customer],
+                     dueDate: Option[DateTime],
+                     schedule: Option[Schedule],
+                     comment: Option[String]) = ???
 
       def findTaskById     = tasks.findBy(_.id)
       def findScheduleById = schedules.findBy(_.id)

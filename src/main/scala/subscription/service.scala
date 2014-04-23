@@ -370,8 +370,7 @@ object Service {
     private def uniqueRoute = pathPrefix(IntNumber) { orderId ⇒
       pathEnd {
         get { ctx ⇒
-          (application order orderId).fold(internalServerError(ctx),
-                                           entityOrNotFound(ctx))
+          (application order orderId).fold(internalServerError(ctx), entityOrNotFound(ctx))
         }
       } ~ pathSuffix("lines") {
         get {
@@ -409,15 +408,14 @@ object Service {
       }
     }
 
-    private def uniqueRoute = pathPrefix(IntNumber) { orderId ⇒
+    private def uniqueRoute = pathPrefix(IntNumber) { taskId ⇒
       pathEnd {
         get { ctx ⇒
-          (application order orderId).fold(internalServerError(ctx),
-            entityOrNotFound(ctx))
+          (application task taskId).fold(internalServerError(ctx), entityOrNotFound(ctx))
         }
-      } ~ pathSuffix("lines") {
+      } ~ pathSuffix("activities") {
         get {
-          complete(s"order: $orderId / lines")
+          complete(s"task: $taskId / activities")
         }
       }
     }
@@ -473,7 +471,4 @@ object ServiceRunner extends App {
   implicit val actorSystem = ActorSystem("services")
 
   Service bind Service.Endpoint("localhost", 8080)
-
-  Console.in.read()
-  actorSystem.shutdown()
 }
