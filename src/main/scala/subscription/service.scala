@@ -120,7 +120,7 @@ object Service {
       }
     }
 
-    implicit val _cashPaymentFormat  = jsonFormat3(CashVerification)
+    implicit val _cashPaymentFormat  = jsonFormat3(CashPayment)
     implicit val _bankGiroFormat     = jsonFormat5(BankGiroVerification)
     implicit val _depositFormat      = jsonFormat9(Deposit)
     implicit val _customerFormat     = jsonFormat3(Customer)
@@ -247,7 +247,7 @@ object Service {
           complete(application.depositsSpanning(from, through))
         }
       } ~ post {
-        entity(as[CashVerification]) { payment ⇒
+        entity(as[CashPayment]) { payment ⇒
           complete(application addDeposit payment)
         } ~ entity(as[BankGiroVerification]) { payment ⇒
           complete(application addDeposit payment)
@@ -398,8 +398,6 @@ object ServiceRunner extends App {
 
   Service bind Service.Endpoint("localhost", 8080)
 
-/*
   Console.in.read()
   actorSystem.shutdown()
-*/
 }
