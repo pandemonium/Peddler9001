@@ -8,9 +8,9 @@ import org.joda.time.DateTime
 object Parcel {
   type ⊕ [A, B] = Parcel[A, B]
 
-  implicit class ParcelOps[A](value: A) {
-    def successfulParcel[X, AA >: A] = Parcel successful value
-    def failedParcel                 = Parcel failed value
+  implicit class ParcelOps[A](value: ⇒ A) {
+    def asSuccessful[X, AA >: A] = Parcel successful value
+    def asFailed                 = Parcel failed value
   }
 
   sealed trait Parcel[+X, +A] { self ⇒
@@ -90,14 +90,14 @@ trait CustomerFeatures { self: FeatureUniverse ⇒
   import CustomersModule._
 
   def customers: String ⊕ Seq[Customer] = databaseMap { implicit session ⇒
-    persistence.customers.buildColl.successfulParcel
+    persistence.customers.buildColl[Seq].asSuccessful
   }
 
   def addCustomer(name: String): String ⊕ Customer = databaseMap { implicit session ⇒
     val id       = persistence insertCustomer name
     val customer = persistence findCustomerById id firstOption
 
-    customer map successful getOrElse "customer.created_yet_not_found".failedParcel
+    customer map successful getOrElse "customer.created_yet_not_found".asFailed
   }
 }
 
@@ -118,7 +118,7 @@ trait TransactionFeatures { self: FeatureUniverse with CustomerFeatures ⇒
     // There's no error handling anywhere here.
 
     // Sbould `successful` turn into a `failed` on exceptions?
-    persistence.transactionsSpanning(from, through).buildColl.successfulParcel
+    persistence.transactionsSpanning(from, through).buildColl[Seq].asSuccessful
   }
 
   def addTransaction(tx: Transaction): String ⊕ Transaction = databaseMap { implicit session ⇒
@@ -148,7 +148,7 @@ trait TransactionFeatures { self: FeatureUniverse with CustomerFeatures ⇒
   def transaction(id: Int): String ⊕ Option[Transaction] = databaseMap { implicit session ⇒
     val transaction = persistence findTransactionById id firstOption
 
-    transaction.successfulParcel
+    transaction.asSuccessful
   }
 }
 
@@ -158,7 +158,7 @@ trait DepositFeatures { self: FeatureUniverse with TransactionFeatures ⇒
   import DepositsModule._, TransactionsModule._, CustomersModule._
 
   def depositsSpanning(from: DateTime, through: DateTime): String ⊕ Seq[Deposit] = databaseMap { implicit session ⇒
-    persistence.depositsSpanning(from, through).buildColl.successfulParcel
+    persistence.depositsSpanning(from, through).buildColl[Seq].asSuccessful
   }
 
   def addDeposit(payment: Verification): String ⊕ Deposit = databaseMap { implicit session ⇒
@@ -187,7 +187,7 @@ trait DepositFeatures { self: FeatureUniverse with TransactionFeatures ⇒
   def deposit(id: Int): String ⊕ Option[Deposit] = databaseMap { implicit session ⇒
     val deposit = persistence findDepositById id firstOption
 
-    deposit.successfulParcel
+    deposit.asSuccessful
   }
 
   def creditDepositToCustomer(credit: CreditCustomerDeposit): String ⊕ Option[Transaction] = databaseMap { implicit session ⇒
@@ -214,7 +214,7 @@ trait ProductFeatures { self: FeatureUniverse ⇒
   import ProductsModule._
 
   def products: String ⊕ Seq[Product] = databaseMap { implicit session ⇒
-    persistence.products.buildColl.successfulParcel
+    persistence.products.buildColl[Seq].asSuccessful
   }
 
   def addProduct(product: Product): String ⊕ Product = databaseMap { implicit session ⇒
@@ -234,7 +234,7 @@ trait SubscriptionFeatures { self: FeatureUniverse ⇒
 
   // Date span here too?
   def subscriptions: String ⊕ Seq[Subscription] = databaseMap { implicit session ⇒
-    persistence.subscriptions.buildColl.successfulParcel
+    persistence.subscriptions.buildColl[Seq].asSuccessful
   }
 
   def addSubscription(subscription: Subscription): String ⊕ Subscription = databaseMap { implicit session ⇒
@@ -256,11 +256,11 @@ trait OrderFeatures { self: FeatureUniverse ⇒
   import OrdersModule._, CustomersModule._
 
   def orders: String ⊕ Seq[Order] = databaseMap { implicit session ⇒
-    persistence.orders.buildColl.successfulParcel
+    persistence.orders.buildColl[Seq].asSuccessful
   }
 
   def ordersWithCustomers: String ⊕ Seq[(Order, Customer)] = databaseMap { implicit session ⇒
-    persistence.orderCustomerJoin.buildColl.successfulParcel
+    persistence.orderCustomerJoin.buildColl[Seq].asSuccessful
   }
 
   def addOrder(order: OrderInsert): String ⊕ Order = databaseMap { implicit session ⇒
@@ -276,29 +276,27 @@ trait OrderFeatures { self: FeatureUniverse ⇒
   }
 
   def order(id: Int): String ⊕ Option[Order] = databaseMap { implicit session ⇒
-    val order = persistence findOrderById id firstOption
-
     // Still no real error handling. An exception bubbles all the way
     // up as an Internal Server Error.
 
-    order.successfulParcel
+    (persistence findOrderById id firstOption).asSuccessful
   }
 }
 
 trait TaskFeatures { self: FeatureUniverse ⇒
   import persistence.profile.simple._
   import Parcel._
-  import TasksModule._
+  import TasksModule._, TaskStatuses._
 
   def tasks: String ⊕ Seq[Task] = databaseMap { implicit session ⇒
-    persistence.tasks.buildColl.successfulParcel
+    persistence.tasks.buildColl[Seq].asSuccessful
   }
 
   def addTask(task: TaskMemento): String ⊕ Task = databaseMap { implicit session ⇒
     parcelFromOption(task match {
-      case PlainTask(name, customerId, due) ⇒
+      case PlainTask(name, customerId, dueDate) ⇒
         val customer = customerId flatMap (persistence findCustomerById _ firstOption)
-        val taskId   = persistence.insertTask(name, customer, due, None)
+        val taskId   = persistence.insertTask(name, customer, dueDate, None)
 
         persistence findTaskById taskId firstOption
 
@@ -309,6 +307,14 @@ trait TaskFeatures { self: FeatureUniverse ⇒
 
         persistence findTaskById taskId firstOption
     }, "tasks.created_yet_not_found")
+  }
+
+  def task(id: Int): String ⊕ Option[Task] = databaseMap { implicit session ⇒
+    (persistence findTaskById id firstOption).asSuccessful
+  }
+
+  def updateTask(id: Int, task: TaskMemento): String ⊕ Task = databaseMap { implicit session ⇒
+    ???
   }
 }
 
