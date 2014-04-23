@@ -1,10 +1,15 @@
+import spray.revolver.RevolverPlugin.Revolver
+import twirl.sbt.TwirlPlugin.Twirl
+
 name := "Paermar"
 
 version := "0.1"
 
 scalaVersion := "2.10.3"
 
-seq(Twirl.settings: _*)
+seq((Twirl.settings ++ Revolver.settings): _*)
+
+mainClass in Revolver.reStart := Some("paermar.service.ServiceRunner")
 
 resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
 
