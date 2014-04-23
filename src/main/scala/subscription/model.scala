@@ -408,11 +408,13 @@ object Domain {
     sealed trait TaskMemento
     case class PlainTask(name: String,
                          customerId: Option[Int],
-                         due: Option[DateTime]) extends TaskMemento
+                         due: Option[DateTime])
+      extends TaskMemento
     case class ScheduledTask(name: String,
                              customerId: Option[Int],
                              deadline: DateTime,
                              scheduleId: Int)
+      extends TaskMemento
 
     object UnitTypes {
       sealed abstract class UnitType private[UnitTypes] (val value: Int)
@@ -528,13 +530,26 @@ object Domain {
       val taskActivities      = TableQuery[TaskActivities]
       val taskActivityInserts = taskActivities returning taskActivities.map(_.id)
 
-      def insertTask(name: String)
+      def insertTask(name: String,
+                     customer: Option[Customer],
+                     due: Option[DateTime],
+                     schedule: Option[Schedule])
                     (implicit s: Session) =
-        taskInserts += Task(None, name, new DateTime, Open, new DateTime, None, None, None, None)
+        taskInserts += Task(None, name,
+                            new DateTime,
+                            Open,
+                            new DateTime,
+                            due,
+                            schedule.flatMap(_.id),
+                            None,
+                            customer.flatMap(_.id))
 
       def insertTaskComment(task: Task, comment: String)
                            (implicit s: Session) =
         taskActivityInserts += TaskActivity(None, task.id.get, new DateTime, comment)
+
+      def findTaskById     = tasks.findBy(_.id)
+      def findScheduleById = schedules.findBy(_.id)
     }
   }
 

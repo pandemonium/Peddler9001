@@ -42,7 +42,7 @@ object Service {
   import paermar.model.Domain._
   import PersistenceModule._, TransactionsModule._, DepositsModule._,
          CustomersModule._, ProductsModule._, SubscriptionsModule._,
-         OrdersModule._
+         OrdersModule._, TasksModule._
 
   trait ServiceUniverse extends ResponseSupport {
     val protocol: Protocol
@@ -73,7 +73,7 @@ object Service {
 
   class Protocol(val features: ApplicationFeatures) extends DefaultJsonProtocol {
     import application.Parcel._
-    import TransactionType._, OrderStatus._
+    import TransactionType._, OrderStatus._, TaskStatuses._, UnitTypes._
 
     implicit object _StringToDateTime extends FromStringDeserializer[DateTime] {
       def apply(source: String) =
@@ -115,21 +115,53 @@ object Service {
       def read(source: JsValue): OrderStatus = source match {
         case JsString("New") ⇒ New
       }
+
       def write(status: OrderStatus): JsValue = status match {
         case New ⇒ JsString("New")
       }
     }
 
-    implicit val _cashPaymentFormat  = jsonFormat3(CashVerification)
-    implicit val _bankGiroFormat     = jsonFormat5(BankGiroVerification)
-    implicit val _depositFormat      = jsonFormat9(Deposit)
-    implicit val _customerFormat     = jsonFormat3(Customer)
-    implicit val _transactionFormat  = jsonFormat6(Transaction)
-    implicit val _productFormat      = jsonFormat5(Product)
-    implicit val _subscriptionFormat = jsonFormat5(Subscription)
-    implicit val _orderFormat        = jsonFormat5(Order)
-    implicit val _orderInsertFormat  = jsonFormat2(NewOrder)
-    implicit val _claimFormat        = jsonFormat3(CreditCustomerDeposit)
+    implicit object _TaskStatusFormat extends JsonFormat[TaskStatus] {
+      def read(source: JsValue): TaskStatus = source match {
+        case JsString("Open")   ⇒ Open
+        case JsString("Closed") ⇒ Closed
+      }
+
+      def write(status: TaskStatus): JsValue = status match {
+        case Open ⇒ JsString("Open")
+        case Closed ⇒ JsString("Closed")
+      }
+    }
+
+    implicit object _UnitTypeFormat extends JsonFormat[UnitType] {
+      def read(source: JsValue): UnitType = source match {
+        case JsString("Day")   ⇒ Day
+        case JsString("Week")  ⇒ Week
+        case JsString("Month") ⇒ Month
+        case JsString("Year")  ⇒ Year
+      }
+
+      def write(status: UnitType): JsValue = status match {
+        case Day   ⇒ JsString("Day")
+        case Week  ⇒ JsString("Week")
+        case Month ⇒ JsString("Month")
+        case Year  ⇒ JsString("Year")
+      }
+    }
+
+    implicit val _plainTaskFormat     = jsonFormat3(PlainTask)
+    implicit val _scheduledTaskFormat = jsonFormat4(ScheduledTask)
+    implicit val _taskFormat          = jsonFormat9(Task)
+    implicit val _cashPaymentFormat   = jsonFormat3(CashVerification)
+    implicit val _bankGiroFormat      = jsonFormat5(BankGiroVerification)
+    implicit val _depositFormat       = jsonFormat9(Deposit)
+    implicit val _customerFormat      = jsonFormat3(Customer)
+    implicit val _transactionFormat   = jsonFormat6(Transaction)
+    implicit val _productFormat       = jsonFormat5(Product)
+    implicit val _subscriptionFormat  = jsonFormat5(Subscription)
+    implicit val _orderFormat         = jsonFormat5(Order)
+    implicit val _orderInsertFormat   = jsonFormat2(NewOrder)
+    implicit val _claimFormat         = jsonFormat3(CreditCustomerDeposit)
 
     implicit def _ParcelFormat[X: JsonFormat, A: JsonFormat] = new RootJsonFormat[X ⊕ A] {
       val Success = SingletonMapExtractor[String, JsValue]("success")
@@ -305,7 +337,7 @@ object Service {
   }
 
   trait OrdersRoute extends RouteSource with TwirlSupport { self: ServiceUniverse ⇒
-    import protocol._, MediaTypes._
+    import protocol._
 
     override abstract def route = thisRoute ~ super.route
 
@@ -322,9 +354,10 @@ object Service {
       get {
         // This has turned into quite the kludge
         parameter('format ?) { format ⇒ ctx ⇒
-          format.fold(ctx complete application.orders) { fmt ⇒
-            application.orders.fold(_    ⇒ Transfer(Map.empty, Seq.empty[String]),
-                                    data ⇒ ctx.complete[Transfer[Order]](data))
+          val orders = application.orders
+          format.fold(ctx complete orders) { fmt ⇒
+            orders.fold(_    ⇒ Transfer(Map.empty, Seq.empty[String]),
+                        data ⇒ ctx.complete[Transfer[Order]](data))
           }
         }
       } ~ post {
@@ -339,6 +372,48 @@ object Service {
         get { ctx ⇒
           (application order orderId).fold(internalServerError(ctx),
                                            entityOrNotFound(ctx))
+        }
+      } ~ pathSuffix("lines") {
+        get {
+          complete(s"order: $orderId / lines")
+        }
+      }
+    }
+  }
+
+  trait TasksRoute extends RouteSource { self: ServiceUniverse ⇒
+    import protocol._
+
+    override abstract def route = thisRoute ~ super.route
+
+    private def thisRoute = pathPrefix("tasks") {
+      uniqueRoute ~ collectionRoute
+    }
+
+    private def collectionRoute = pathEnd {
+      get {
+        // This has turned into quite the kludge
+        parameter('format ?) { format ⇒ ctx ⇒
+          val tasks = application.tasks
+          format.fold(ctx complete tasks) { fmt ⇒
+            tasks.fold(_    ⇒ ctx.complete(Seq.empty[String]: Transfer[String]),
+                       data ⇒ ctx.complete(data: Transfer[Task]))
+          }
+        }
+      } ~ post {
+        entity(as[PlainTask]) { task ⇒
+          complete(application addTask task)
+        } ~  entity(as[ScheduledTask]) { task ⇒
+          complete(application addTask task)
+        }
+      }
+    }
+
+    private def uniqueRoute = pathPrefix(IntNumber) { orderId ⇒
+      pathEnd {
+        get { ctx ⇒
+          (application order orderId).fold(internalServerError(ctx),
+            entityOrNotFound(ctx))
         }
       } ~ pathSuffix("lines") {
         get {
@@ -369,6 +444,7 @@ object Service {
     with ProductRoute
     with SubscriptionsRoute
     with OrdersRoute
+    with TasksRoute
     with WebResourceRoute
 
   case class Endpoint(host: String, port: Int)

@@ -294,7 +294,22 @@ trait TaskFeatures { self: FeatureUniverse ⇒
     persistence.tasks.buildColl.successfulParcel
   }
 
-  def addTask()
+  def addTask(task: TaskMemento): String ⊕ Task = databaseMap { implicit session ⇒
+    parcelFromOption(task match {
+      case PlainTask(name, customerId, due) ⇒
+        val customer = customerId flatMap (persistence findCustomerById _ firstOption)
+        val taskId   = persistence.insertTask(name, customer, due, None)
+
+        persistence findTaskById taskId firstOption
+
+      case ScheduledTask(name, customerId, deadline, scheduleId) ⇒
+        val customer = customerId flatMap (persistence findCustomerById _ firstOption)
+        val schedule = persistence findScheduleById scheduleId firstOption
+        val taskId   = persistence.insertTask(name, customer, Option(deadline), schedule)
+
+        persistence findTaskById taskId firstOption
+    }, "tasks.created_yet_not_found")
+  }
 }
 
 // I should really combine application with model as there's no real
@@ -309,3 +324,4 @@ class ApplicationFeatures(val persistence: Domain.PersistenceModule.UnifiedPersi
   with ProductFeatures
   with SubscriptionFeatures
   with OrderFeatures
+  with TaskFeatures
