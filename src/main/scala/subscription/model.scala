@@ -124,15 +124,15 @@ object Domain {
   object DepositsModule extends AbstractModule {
     import TransactionsModule._, CustomersModule._
 
-    sealed trait Payment
-    case class CashPayment(customerId: Int, amount: Int, reference: String)
-      extends Payment
+    sealed trait Verification
+    case class CashVerification(customerId: Int, amount: Int, reference: String)
+      extends Verification
     case class BankGiroVerification(valueDate: DateTime,
                                     amount: Int,
                                     reference: String,
                                     payer: String,
                                     avi: String)
-      extends Payment
+      extends Verification
 
     case class Deposit(id: Option[Int],
                        valueDate: DateTime,
@@ -222,7 +222,7 @@ object Domain {
     trait ProductsAspect extends Structure { self: PersistentUniverse ⇒
       import profile.simple._
 
-      class Products(tag: Tag) extends Table[Product](tag: Tag, "Products") {
+      class Products(tag: Tag) extends Table[Product](tag, "Products") {
         def id          = column[Int]("id", O.PrimaryKey, O.AutoInc)
         def `type`      = column[Int]("type", O.NotNull)
         def name        = column[String]("name", O.NotNull)
@@ -279,7 +279,7 @@ object Domain {
       self: PersistentUniverse with CustomersAspect with ProductsAspect ⇒
       import profile.simple._
 
-      class Orders(tag: Tag) extends Table[Order](tag: Tag, "Orders") {
+      class Orders(tag: Tag) extends Table[Order](tag, "Orders") {
         def id         = column[Int]("id", O.PrimaryKey, O.AutoInc)
         def customerId = column[Int]("customerId", O.NotNull)
         def created    = column[DateTime]("created", O.NotNull)
@@ -295,7 +295,7 @@ object Domain {
           MappedColumnType.base[OrderStatus, Int](_.value, OrderStatus.fromInt)
       }
 
-      class OrderLines(tag: Tag) extends Table[OrderLine](tag: Tag, "OrderLines") {
+      class OrderLines(tag: Tag) extends Table[OrderLine](tag, "OrderLines") {
         def id          = column[Int]("id", O.PrimaryKey, O.AutoInc)
         def orderId     = column[Int]("orderId", O.NotNull)
         def productId   = column[Int]("productId", O.NotNull)
@@ -344,7 +344,7 @@ object Domain {
     trait AccountsAspect extends Structure { self: PersistentUniverse ⇒
       import profile.simple._
 
-      class Accounts(tag: Tag) extends Table[Account](tag: Tag, "Accounts") {
+      class Accounts(tag: Tag) extends Table[Account](tag, "Accounts") {
         def id       = column[Int]("id", O.PrimaryKey, O.AutoInc)
         def login    = column[String]("login", O.NotNull)
         def password = column[String]("password", O.NotNull)
@@ -379,7 +379,7 @@ object Domain {
     trait SubscriptionsAspect extends Structure { self: PersistentUniverse ⇒
       import profile.simple._
 
-      class Subscriptions(tag: Tag) extends Table[Subscription](tag: Tag, "Subscriptions") {
+      class Subscriptions(tag: Tag) extends Table[Subscription](tag, "Subscriptions") {
         def id         = column[Int]("id", O.PrimaryKey, O.AutoInc)
         def customerId = column[Int]("customerId", O.NotNull)
         def created    = column[DateTime]("created", O.NotNull)
@@ -430,7 +430,7 @@ object Program extends App {
   val universe = new UnifiedPersistence(slick.driver.MySQLDriver)
 
   database withSession { implicit session ⇒
-    val x = universe.findAuthenticatedAccount("pa", "spi1selkrok1")
+    val x = universe.findAuthenticatedAccount("pa", "spiselkrok1")
     x.firstOption foreach println
   }
 }
