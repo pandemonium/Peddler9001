@@ -285,6 +285,18 @@ trait OrderFeatures { self: FeatureUniverse ⇒
   }
 }
 
+trait TaskFeatures { self: FeatureUniverse ⇒
+  import persistence.profile.simple._
+  import Parcel._
+  import TasksModule._
+
+  def tasks: String ⊕ Seq[Task] = databaseMap { implicit session ⇒
+    persistence.tasks.buildColl.successfulParcel
+  }
+
+  def addTask()
+}
+
 // I should really combine application with model as there's no real
 // gain at the moment.
 

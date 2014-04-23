@@ -87,7 +87,7 @@ object Domain {
         def comment    = column[String]("comment")
 
         def *          = (id ?, customerId, created, `type`, amount, comment ?) <>
-          (Transaction.tupled, Transaction.unapply)
+                           (Transaction.tupled, Transaction.unapply)
 
         def customer   = foreignKey("customerFk", customerId, customers)(_.id)
 
@@ -401,10 +401,147 @@ object Domain {
     }
   }
 
+  object TasksModule extends AbstractModule {
+    import CustomersModule._
+    import TaskStatuses._, UnitTypes._
+
+    sealed trait TaskMemento
+    case class PlainTask(name: String,
+                         customerId: Option[Int],
+                         due: Option[DateTime]) extends TaskMemento
+    case class ScheduledTask(name: String,
+                             customerId: Option[Int],
+                             deadline: DateTime,
+                             scheduleId: Int)
+
+    object UnitTypes {
+      sealed abstract class UnitType private[UnitTypes] (val value: Int)
+      case object Day   extends UnitType(1)
+      case object Week  extends UnitType(2)
+      case object Month extends UnitType(3)
+      case object Year  extends UnitType(4)
+
+      def fromInt(value: Int) = value match {
+        case 1 ⇒ Day
+        case 2 ⇒ Week
+        case 3 ⇒ Month
+        case 4 ⇒ Year
+      }
+
+      def unapply(`type`: UnitType) = `type` match {
+        case Day   ⇒ Some(1)
+        case Week  ⇒ Some(2)
+        case Month ⇒ Some(3)
+        case Year  ⇒ Some(4)
+      }
+    }
+
+    case class Schedule(id: Option[Int],
+                        name: String,
+                        created: DateTime,
+                        unitType: UnitType,
+                        units: Int)
+
+    object TaskStatuses {
+      sealed abstract class TaskStatus private[TaskStatuses] (val value: Int)
+      case object Open   extends TaskStatus(1)
+      case object Closed extends TaskStatus(2)
+
+      def fromInt(value: Int) = value match {
+        case 1 ⇒ Open
+        case 2 ⇒ Closed
+      }
+
+      def unapply(status: TaskStatus) = status match {
+        case Open   ⇒ Some(1)
+        case Closed ⇒ Some(2)
+      }
+    }
+
+    case class Task(id: Option[Int],
+                    name: String,
+                    created: DateTime,
+                    status: TaskStatus,
+                    lastUpdated: DateTime,
+                    dueDate: Option[DateTime],
+                    scheduleId: Option[Int],
+                    comment: Option[String],
+                    customerId: Option[Int])
+
+    case class TaskActivity(id: Option[Int],
+                            taskId: Int,
+                            created: DateTime,
+                            content: String)
+
+    trait TasksAspect extends Structure { self: PersistentUniverse with CustomersAspect ⇒
+      import profile.simple._
+
+      class Schedules(tag: Tag) extends Table[Schedule](tag, "Schedules") {
+        def id       = column[Int]("id", O.PrimaryKey, O.AutoInc)
+        def name     = column[String]("name", O.NotNull)
+        def created  = column[DateTime]("created", O.NotNull)
+        def unitType = column[UnitType]("unitType", O.NotNull)
+        def units    = column[Int]("units", O.NotNull)
+
+        def * = (id ?, name, unitType, units) <> (Schedule.tupled, Schedule.unapply)
+
+        implicit val unitTypes =
+          MappedColumnType.base[UnitType, Int](_.value, UnitTypes.fromInt)
+      }
+
+      class Tasks(tag: Tag) extends Table[Task](tag, "Task") {
+        def id          = column[Int]("id", O.PrimaryKey, O.AutoInc)
+        def name        = column[String]("name", O.NotNull)
+        def created     = column[DateTime]("created", O.NotNull)
+        def status      = column[TaskStatus]("status", O.NotNull)
+        def lastUpdated = column[DateTime]("lastUpdated", O.NotNull)
+        def dueDate     = column[DateTime]("dueDate")
+        def scheduleId  = column[Int]("scheduleId")
+        def comment     = column[String]("comment")
+        def customerId  = column[Int]("customerId")
+
+        def customer    = foreignKey("customerFk", customerId, customers)(_.id)
+        def schedule    = foreignKey("scheduleFk", scheduleId, schedules)(_.id)
+
+        def * = (id ?, name, created, status, lastUpdated, dueDate ?, scheduleId ?, comment ?, customerId ?) <>
+                  (Task.tupled, Task.unapply)
+
+        implicit val taskStatus =
+          MappedColumnType.base[TaskStatus, Int](_.value, TaskStatuses.fromInt)
+      }
+
+      class TaskActivities(tag: Tag) extends Table[TaskActivity](tag, "TaskActivities") {
+        def id      = column[Int]("id", O.PrimaryKey, O.AutoInc)
+        def taskId  = column[Int]("taskId", O.NotNull)
+        def created = column[DateTime]("created", O.NotNull)
+        def content = column[String]("content", O.NotNull)
+
+        def task    = foreignKey("taskFk", taskId, tasks)(_.id)
+
+        def * = (id ?, taskId, created, content) <> (TaskActivity.tupled, TaskActivity.unapply)
+      }
+
+      val schedules           = TableQuery[Schedules]
+      val scheduleInserts     = schedules returning schedules.map(_.id)
+      val tasks               = TableQuery[Tasks]
+      val taskInserts         = tasks returning tasks.map(_.id)
+      val taskActivities      = TableQuery[TaskActivities]
+      val taskActivityInserts = taskActivities returning taskActivities.map(_.id)
+
+      def insertTask(name: String)
+                    (implicit s: Session) =
+        taskInserts += Task(None, name, new DateTime, Open, new DateTime, None, None, None, None)
+
+      def insertTaskComment(task: Task, comment: String)
+                           (implicit s: Session) =
+        taskActivityInserts += TaskActivity(None, task.id.get, new DateTime, comment)
+    }
+  }
+
   object PersistenceModule {
     import CustomersModule._, TransactionsModule._, DepositsModule._,
            ProductsModule._, AccountsModule._, SubscriptionsModule._,
-           OrdersModule._
+           OrdersModule._, TasksModule._
 
     class UnifiedPersistence(val profile: JdbcProfile) extends Foundation
       with CustomersAspect
@@ -414,6 +551,7 @@ object Domain {
       with AccountsAspect
       with SubscriptionsAspect
       with OrdersAspect
+      with TasksAspect
   }
 }
 
