@@ -161,9 +161,9 @@ trait DepositFeatures { self: FeatureUniverse with TransactionFeatures ⇒
     persistence.depositsSpanning(from, through).buildColl.successfulParcel
   }
 
-  def addDeposit(payment: Payment): String ⊕ Deposit = databaseMap { implicit session ⇒
+  def addDeposit(payment: Verification): String ⊕ Deposit = databaseMap { implicit session ⇒
     payment match {
-      case CashPayment(customerId, amount, reference) ⇒
+      case CashVerification(customerId, amount, reference) ⇒
         val deposit = for {
           customer     <- persistence findCustomerById customerId firstOption
 
