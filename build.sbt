@@ -5,7 +5,7 @@ name := "Paermar"
 
 version := "0.1"
 
-scalaVersion := "2.10.3"
+scalaVersion := "2.10.4"
 
 seq((Twirl.settings ++ Revolver.settings): _*)
 
@@ -23,7 +23,7 @@ resolvers += "spray repo" at "http://repo.spray.io"
 
 libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.3.2"
 
-libraryDependencies += "com.typesafe.slick" %%  "slick" % "2.0.1"
+libraryDependencies += "com.typesafe.slick" %%  "slick" % "2.1.0-M1"
 
 libraryDependencies += "mysql" % "mysql-connector-java" % "5.1.30"
 
