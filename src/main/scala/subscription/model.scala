@@ -111,7 +111,7 @@ object Domain {
         transactionInserts += Transaction(None, customer.id.get, currentDateTime, Credit, amount, comment)
 
       def transactionsSpanning(from: DateTime, through: DateTime) = for {
-        tx <- transactions
+        tx ← transactions
         if tx.created >= from && tx.created <= through
       } yield tx
 
@@ -193,14 +193,14 @@ object Domain {
 
       def setDepositTransaction(deposit: Deposit, transactionId: Int)
                                (implicit session: Session) = {
-        val projection = for (d <- deposits if d.id === deposit.id.get)
+        val projection = for (d ← deposits if d.id === deposit.id.get)
                            yield d.transactionId
 
         projection update transactionId
       }
 
       def depositsSpanning(from: DateTime, through: DateTime) = for {
-        d <- deposits
+        d ← deposits
         if d.created >= from && d.created <= through
       } yield d
 
@@ -233,8 +233,11 @@ object Domain {
                             (Product.tupled, Product.unapply)
       }
 
+
       val products       = TableQuery[Products]
       val productInserts = products returning products.map(_.id)
+
+      override abstract def description = products.ddl ++ super.description
 
       def insertProduct(`type`: Int,
                         name: String,
@@ -314,9 +317,11 @@ object Domain {
       val orderLines       = TableQuery[OrderLines]
       val orderLineInserts = orderLines returning orderLines.map(_.id)
 
+      override abstract def description = orders.ddl ++ orderLines.ddl ++ super.description
+
       // Why can't this thing utilise the foreign key thing?
       val orderCustomerJoin = for {
-        (order, customer) <- orders innerJoin customers on (_.customerId === _.id)
+        (order, customer) ← orders innerJoin customers on (_.customerId === _.id)
       } yield (order, customer)
 
       def insertOrder(customer: Customer, comment: Option[String])
@@ -355,13 +360,15 @@ object Domain {
 
       val accounts = TableQuery[Accounts]
 
+      override abstract def description = accounts.ddl ++ super.description
+
       def insertAccount(login: String, password: String, fullName: String)
                        (implicit s: Session) =
         accounts += Account(None, login, password, fullName)
 
       def findAuthenticatedAccount(login: String, password: String)
                                   (implicit s: Session) =
-        for (acct <- accounts
+        for (acct ← accounts
              if acct.login === login && acct.password === password)
         yield acct.fullName
     }
@@ -392,6 +399,8 @@ object Domain {
 
       val subscriptions      = TableQuery[Subscriptions]
       val subscriptionInsert = subscriptions returning subscriptions.map(_.id)
+
+      override abstract def description = subscriptions.ddl ++ super.description
 
       def insertSubscription(customer: Customer, startDate: Option[DateTime], comment: Option[String])
                             (implicit s: Session) =
@@ -452,11 +461,6 @@ object Domain {
       def fromInt(value: Int) = value match {
         case 1 ⇒ Open
         case 2 ⇒ Closed
-      }
-
-      def unapply(status: TaskStatus) = status match {
-        case Open   ⇒ Some(1)
-        case Closed ⇒ Some(2)
       }
     }
 
@@ -530,6 +534,10 @@ object Domain {
       val taskActivities      = TableQuery[TaskActivities]
       val taskActivityInserts = taskActivities returning taskActivities.map(_.id)
 
+      override abstract def description =
+        schedules.ddl ++ tasks.ddl ++ taskActivities.ddl ++ super.description
+
+
       def insertTask(name: String,
                      customer: Option[Customer],
                      due: Option[DateTime],
@@ -560,22 +568,72 @@ object Domain {
 
       // partial update
       def updateTask(id: Int)
-                    (name: Option[String],
-                     status: Option[TaskStatus],
-                     customer: Option[Customer],
-                     dueDate: Option[DateTime],
-                     schedule: Option[Schedule],
-                     comment: Option[String]) = ???
+                    (name: Option[String]       = None,
+                     status: Option[TaskStatus] = None,
+                     customer: Option[Customer] = None,
+                     dueDate: Option[DateTime]  = None,
+                     schedule: Option[Schedule] = None,
+                     comment: Option[String]    = None) = ???
 
-      def findTaskById     = tasks.findBy(_.id)
-      def findScheduleById = schedules.findBy(_.id)
+      def findTaskById         = tasks.findBy(_.id)
+      def findTaskActivityById = taskActivities.findBy(_.id)
+      def findScheduleById     = schedules.findBy(_.id)
+    }
+  }
+
+  object ShipmentsModule extends AbstractModule {
+    import OrdersModule._, ShipmentStatuses._
+
+    object ShipmentStatuses {
+
+      sealed abstract class ShipmentStatus private[ShipmentStatuses](val value: Int)
+      case object Pending extends ShipmentStatus(1)
+      case object Shipped extends ShipmentStatus(2)
+
+      def fromInt(value: Int) = value match {
+        case 1 ⇒ Pending
+        case 2 ⇒ Shipped
+      }
+    }
+
+    case class Shipment(id: Option[Int],
+                        orderId: Int,
+                        created: DateTime,
+                        status: ShipmentStatus)
+
+    trait ShipmentsAspect extends Structure { self: PersistentUniverse with OrdersAspect ⇒
+      import profile.simple._
+
+      class Shipments(tag: Tag) extends Table[Shipment](tag, "Shipment") {
+        def id      = column[Int]("id", O.PrimaryKey, O.AutoInc)
+        def orderId = column[Int]("orderId", O.NotNull)
+        def created = column[DateTime]("created", O.NotNull)
+        def status  = column[ShipmentStatus]("status", O.NotNull)
+
+        def order   = foreignKey("orderFk", orderId, orders)(_.id)
+
+        def * = (id ?, orderId, created, status) <> (Shipment.tupled, Shipment.unapply)
+
+        implicit val shipmentStatus =
+          MappedColumnType.base[ShipmentStatus, Int](_.value, ShipmentStatuses.fromInt)
+      }
+
+      val shipments       = TableQuery[Shipments]
+      val shipmentInserts = shipments returning shipments.map(_.id)
+
+      // Can there ever be more than one shipment per any given order?
+      def insertShipment(order: Order)
+                        (implicit s: Session) =
+        shipmentInserts += Shipment(None, order.id.get, new DateTime, Pending)
+
+      def findShipmentById = shipments.findBy(_.id)
     }
   }
 
   object PersistenceModule {
     import CustomersModule._, TransactionsModule._, DepositsModule._,
            ProductsModule._, AccountsModule._, SubscriptionsModule._,
-           OrdersModule._, TasksModule._
+           OrdersModule._, TasksModule._, ShipmentsModule._
 
     class UnifiedPersistence(val profile: JdbcProfile) extends Foundation
       with CustomersAspect
@@ -586,6 +644,7 @@ object Domain {
       with SubscriptionsAspect
       with OrdersAspect
       with TasksAspect
+      with ShipmentsAspect
   }
 }
 
