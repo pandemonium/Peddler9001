@@ -4,6 +4,8 @@ package model
 import slick.driver.JdbcProfile
 import org.joda.time.DateTime
 import com.github.tototoshi.slick.MySQLJodaSupport._
+import scala.slick.lifted.CompiledFunction
+import scala.slick.lifted
 
 /*
   Add logging.
@@ -44,9 +46,11 @@ object Domain {
 
       override abstract def description = customers.ddl ++ super.description
 
-      val findCustomerById = customers.findBy(_.id)
       def insertCustomer(name: String)(implicit s: Session): Int =
         customers returning customers.map(_.id) += Customer(None, name, currentDateTime)
+
+      def findCustomerById(id: Int)(implicit session: Session) =
+        customers.findBy(_.id).applied(id).firstOption
     }
   }
 
@@ -115,9 +119,8 @@ object Domain {
         if tx.created >= from && tx.created <= through
       } yield tx
 
-      // What is the contract here? Do I just... firstOption this or leave it as is? What
-      // would be the benifit to leaving it like this?
-      def findTransactionById = transactions.findBy(_.id)
+      def findTransactionById(id: Int)(implicit s: Session) =
+        transactions.findBy(_.id).applied(id).firstOption
     }
   }
 
@@ -204,7 +207,8 @@ object Domain {
         if d.created >= from && d.created <= through
       } yield d
 
-      def findDepositById = deposits.findBy(_.id)
+      def findDepositById(id: Int)(implicit s: Session) =
+        deposits.findBy(_.id).applied(id).firstOption
     }
   }
 
@@ -246,7 +250,8 @@ object Domain {
                        (implicit s: Session) =
         productInserts += Product(None, `type`, name, unitPrice, description)
 
-      def findProductById = products.findBy(_.id)
+      def findProductById(id: Int)(implicit s: Session) =
+        products.findBy(_.id).applied(id).firstOption
     }
   }
 
@@ -335,8 +340,11 @@ object Domain {
                          (implicit s: Session) =
         orderLineInserts += OrderLine(None, order.id.get, product.id.get, quantity, description)
 
-      def findOrderById     = orders.findBy(_.id)
-      def findOrderLineById = orderLines.findBy(_.id)
+      def findOrderById(id: Int)(implicit s: Session) =
+        orders.findBy(_.id).applied(id).firstOption
+
+      def findOrderLineById(id: Int)(implicit s: Session) =
+        orderLines.findBy(_.id).applied(id).firstOption
     }
   }
 
@@ -406,7 +414,8 @@ object Domain {
                             (implicit s: Session) =
         subscriptionInsert += Subscription(None, customer.id.get, new DateTime, startDate, comment)
 
-      def findSubscriptionById = subscriptions.findBy(_.id)
+      def findSubscriptionById(id: Int)(implicit s: Session) =
+        subscriptions.findBy(_.id).applied(id).firstOption
     }
   }
 
@@ -575,9 +584,12 @@ object Domain {
                      schedule: Option[Schedule] = None,
                      comment: Option[String]    = None) = ???
 
-      def findTaskById         = tasks.findBy(_.id)
-      def findTaskActivityById = taskActivities.findBy(_.id)
-      def findScheduleById     = schedules.findBy(_.id)
+      def findTaskById(id: Int)(implicit s: Session) =
+        tasks.findBy(_.id).applied(id).firstOption
+      def findTaskActivityById(id: Int)(implicit s: Session) =
+        taskActivities.findBy(_.id).applied(id).firstOption
+      def findScheduleById(id: Int)(implicit s: Session) =
+        schedules.findBy(_.id).applied(id).firstOption
     }
   }
 
@@ -626,7 +638,8 @@ object Domain {
                         (implicit s: Session) =
         shipmentInserts += Shipment(None, order.id.get, new DateTime, Pending)
 
-      def findShipmentById = shipments.findBy(_.id)
+      def findShipmentById(id: Int)(implicit s: Session) =
+        shipments.findBy(_.id).applied(id).firstOption
     }
   }
 

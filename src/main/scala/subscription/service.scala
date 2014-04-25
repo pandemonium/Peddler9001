@@ -15,7 +15,6 @@ RootJsonFormat to a WATableDataStructure?
 import akka.actor._
 import akka.io.IO
 
-import paermar.watable.WATable.TransportFormatProtocol.Transfer
 import scala.concurrent.{Promise, ExecutionContext, Future}
 import scala.util.control.NonFatal
 
@@ -33,13 +32,15 @@ import spray.httpx.unmarshalling.{MalformedContent, FromStringDeserializer}
 import spray.routing._, Directives._
 import spray.http.StatusCodes._
 import spray.httpx.TwirlSupport
-import spray.http.{MediaTypes, MediaType, HttpHeader}
+import spray.http.MediaType
 import spray.http.HttpHeaders.Accept
-import shapeless.HNil
+import paermar.utility.UnitOfWork.UnitOfWork
 
 object Service {
+  import paermar.watable.WATable.TransportFormatProtocol.Transfer
   import paermar.application.ApplicationFeatures
   import paermar.model.Domain._
+  import paermar.utility._, Parcel._
   import PersistenceModule._, TransactionsModule._, DepositsModule._,
          CustomersModule._, ProductsModule._, SubscriptionsModule._,
          OrdersModule._, TasksModule._
@@ -49,18 +50,13 @@ object Service {
     val application: ApplicationFeatures
     implicit def executionContext: ExecutionContext
     implicit def actorRefFactory: ActorContext
+
+    implicit def runUnitOfWork[R](work: UnitOfWork[R]): String ⊕ R = application run work
   }
 
   trait ResponseSupport {
-    def internalServerError(ctx: RequestContext)
-                           (description: String) =
+    def internalServerError(ctx: RequestContext)(description: String) =
       ctx.complete(InternalServerError, description)
-
-    def entityOrNotFound[A: Marshaller](ctx: RequestContext)
-                                     (content: Option[A]) = content match {
-      case Some(entity) ⇒ ctx complete entity
-      case _            ⇒ ctx complete NotFound
-    }
 
     def accept(mediaType: MediaType) = headerValuePF({
       case Accept(range) ⇒ range
@@ -72,7 +68,6 @@ object Service {
   }
 
   class Protocol(val features: ApplicationFeatures) extends DefaultJsonProtocol {
-    import application.Parcel._
     import TransactionType._, OrderStatus._, TaskStatuses._, UnitTypes._
 
     implicit object _StringToDateTime extends FromStringDeserializer[DateTime] {
@@ -166,15 +161,18 @@ object Service {
     implicit def _ParcelFormat[X: JsonFormat, A: JsonFormat] = new RootJsonFormat[X ⊕ A] {
       val Success = SingletonMapExtractor[String, JsValue]("success")
       val Failure = SingletonMapExtractor[String, JsValue]("failure")
+      val Empty   = SingletonMapExtractor[String, JsValue]("failure")
 
       def read(json: JsValue): X ⊕ A = json match {
         case Success(v) ⇒ successful[X, A](v.convertTo[A])
         case Failure(v) ⇒ failed[X, A]    (v.convertTo[X])
+        case Empty(_)   ⇒ empty[X, A]
       }
 
       def write(parcel: X ⊕ A): JsValue =
-        parcel.fold(x ⇒ JsObject("failure" -> x.toJson),
-                    s ⇒ JsObject("success" -> s.toJson))
+        parcel.fold(x ⇒ JsObject("failure" → x.toJson),
+                    s ⇒ JsObject("success" → s.toJson),
+                         JsObject("empty"   → Seq.empty[String].toJson))
     }
   }
 
@@ -190,6 +188,7 @@ object Service {
 
     override abstract def route = authenticate(BasicAuth(authenticator, realm = "Inside")) { authenticationContext ⇒
       // how do I pass on `authenticationContext` ?
+      // I could probably just pass it on to route
       super.route
     }
   }
@@ -220,17 +219,18 @@ object Service {
               // Todo: invent way to turn the failure side of a parcel into
               // a useful DataStructure (or something) so that the client side
               // can present some kind of error box.
-              application.customers.fold(_    ⇒ Transfer(Map.empty, Seq.empty[String]),
-                                         data ⇒ ctx.complete[Transfer[Customer]](data))
+              application.customers fold(_    ⇒ Transfer(Map.empty, Seq.empty[String]),
+                                         data ⇒ ctx.complete[Transfer[Customer]](data),
+                                         Transfer(Map.empty, Seq.empty[String]))
 
 
             case _               ⇒
-              ctx complete application.customers
+              ctx complete application.run(application.customers)
           }
         }
       } ~ post {
         entity(as[String]) { name ⇒
-          complete(application addCustomer name)
+          complete(application.run(application addCustomer name))
         }
       }
     }
@@ -248,18 +248,18 @@ object Service {
     private def collectionRoute = pathEnd {
       get {
         parameters('from.as[DateTime], 'through.as[DateTime]) { (from, through) ⇒
-          complete(application.transactionsSpanning(from, through))
+          complete(application run application.transactionsSpanning(from, through))
         }
       } ~ post {
         entity(as[Transaction]) { transaction ⇒
-          complete(application addTransaction transaction)
+          complete(application.run(application addTransaction transaction))
         }
       }
     }
 
     private def uniqueRoute = pathPrefix(IntNumber) { transactionId ⇒
       get {
-        complete(application transaction transactionId)
+        complete(application.run(application transaction transactionId))
       }
     }
   }
@@ -276,13 +276,13 @@ object Service {
     private def collectionRoute = pathEnd {
       get {
         parameters('from.as[DateTime], 'through.as[DateTime]) { (from, through) ⇒
-          complete(application.depositsSpanning(from, through))
+          complete(application run application.depositsSpanning(from, through))
         }
       } ~ post {
         entity(as[CashVerification]) { verification ⇒
-          complete(application addDeposit verification)
+          complete(application.run(application addDeposit verification))
         } ~ entity(as[BankGiroVerification]) { verification ⇒
-          complete(application addDeposit verification)
+          complete(application.run(application addDeposit verification))
         }
       }
     }
@@ -290,15 +290,15 @@ object Service {
     private def uniqueRoute = pathPrefix(IntNumber) { depositId ⇒
       pathEnd {
         get {
-          complete(application deposit depositId)
+          complete(application.run(application deposit depositId))
         }
       } ~ path("customer" / IntNumber) { customerId ⇒
         put {
-            entity(as[Option[String]]) { comment ⇒
-              val credit = CreditCustomerDeposit(customerId, depositId, comment)
+          entity(as[Option[String]]) { comment ⇒
+            val credit = CreditCustomerDeposit(customerId, depositId, comment)
 
-              complete(application creditDepositToCustomer credit)
-            }
+            complete(application.run(application creditDepositToCustomer credit))
+          }
         }
       }
     }
@@ -311,10 +311,10 @@ object Service {
 
     private def thisRoute = path("products") {
       get {
-        complete(application.products)
+        complete(application run application.products)
       } ~ post {
         entity(as[Product]) { product ⇒
-          complete(application addProduct product)
+          complete(application.run(application addProduct product))
         }
       }
     }
@@ -327,17 +327,17 @@ object Service {
 
     private def thisRoute = path("subscriptions") {
       get {
-        complete(application.subscriptions)
+        complete(application run application.subscriptions)
       } ~ post {
         entity(as[Subscription]) { subscription ⇒
-          complete(application addSubscription subscription)
+          complete(application.run(application addSubscription subscription))
         }
       }
     }
   }
 
   trait OrdersRoute extends RouteSource with TwirlSupport { self: ServiceUniverse ⇒
-    import protocol._
+    import protocol._, paermar.ui._
 
     override abstract def route = thisRoute ~ super.route
 
@@ -346,23 +346,25 @@ object Service {
     }
 
     private def uiRoute = get { ctx ⇒
-      application.ordersWithCustomers.fold(error  ⇒ ctx complete paermar.ui.html.errorPage(error),
-                                           orders ⇒ ctx complete paermar.ui.html.orders(orders))
+      application.ordersWithCustomers fold(error  ⇒ ctx complete html.errorPage(error),
+                                           orders ⇒ ctx complete html.orders(orders),
+                                           ctx complete NotFound)
     }
 
     private def collectionRoute = pathEnd {
       get {
         // This has turned into quite the kludge
         parameter('format ?) { format ⇒ ctx ⇒
-          val orders = application.orders
+          val orders = application run application.orders
           format.fold(ctx complete orders) { fmt ⇒
             orders.fold(_    ⇒ Transfer(Map.empty, Seq.empty[String]),
-                        data ⇒ ctx.complete[Transfer[Order]](data))
+                        data ⇒ ctx.complete[Transfer[Order]](data),
+                        Transfer(Map.empty, Seq.empty[String]))
           }
         }
       } ~ post {
         entity(as[NewOrder]) { order ⇒
-          complete(application addOrder order)
+          complete(application.run(application addOrder order))
         }
       }
     }
@@ -370,7 +372,9 @@ object Service {
     private def uniqueRoute = pathPrefix(IntNumber) { orderId ⇒
       pathEnd {
         get { ctx ⇒
-          (application order orderId).fold(internalServerError(ctx), entityOrNotFound(ctx))
+          (application order orderId).fold(internalServerError(ctx),
+                                           ctx.complete[Order],
+                                           ctx complete NotFound)
         }
       } ~ pathSuffix("lines") {
         get {
@@ -393,17 +397,18 @@ object Service {
       get {
         // This has turned into quite the kludge
         parameter('format ?) { format ⇒ ctx ⇒
-          val tasks = application.tasks
+          val tasks = application run application.tasks
           format.fold(ctx complete tasks) { fmt ⇒
             tasks.fold(_    ⇒ ctx.complete(Seq.empty[String]: Transfer[String]),
-                       data ⇒ ctx.complete(data: Transfer[Task]))
+                       data ⇒ ctx.complete(data: Transfer[Task]),
+                       ctx.complete(Seq.empty[String]: Transfer[String]))
           }
         }
       } ~ post {
         entity(as[PlainTask]) { task ⇒
-          complete(application addTask task)
+          complete(application.run(application addTask task))
         } ~  entity(as[ScheduledTask]) { task ⇒
-          complete(application addTask task)
+          complete(application.run(application addTask task))
         }
       }
     }
@@ -411,7 +416,9 @@ object Service {
     private def uniqueRoute = pathPrefix(IntNumber) { taskId ⇒
       pathEnd {
         get { ctx ⇒
-          (application task taskId).fold(internalServerError(ctx), entityOrNotFound(ctx))
+          (application task taskId).fold(internalServerError(ctx),
+                                         ctx.complete[Task],
+                                         ctx complete NotFound)
         }
       } ~ pathSuffix("activities") {
         get {

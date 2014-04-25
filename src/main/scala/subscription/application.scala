@@ -2,55 +2,12 @@ package paermar
 package application
 
 import paermar.model._, Domain._
+import paermar.utility._
 import scala.slick.jdbc.JdbcBackend
 import org.joda.time.DateTime
-
-object Parcel {
-  type ⊕ [A, B] = Parcel[A, B]
-
-  implicit class ParcelOps[A](value: ⇒ A) {
-    def asSuccessful[X, AA >: A] = Parcel successful value
-    def asFailed                 = Parcel failed value
-  }
-
-  sealed trait Parcel[+X, +A] { self ⇒
-    def isSuccessful: Boolean
-    def isFailure: Boolean
-
-    def flatMap[X1 >: X, B](f: A ⇒ Parcel[X1, B]): Parcel[X1, B] = self match {
-      case Successful(a) ⇒ f(a)
-      case _             ⇒ self.asInstanceOf[Parcel[X, B]]
-    }
-
-    def map[B](f: A ⇒ B): Parcel[X, B] =
-      if (isSuccessful) flatMap(a ⇒ successful(f(a)))
-      else self.asInstanceOf[Parcel[X, B]]
-
-    def mapOrElse[B](f: A ⇒ B)(b: ⇒ B): B = self match {
-      case Successful(a) ⇒ f(a)
-      case _             ⇒ b
-    }
-
-    def fold[Z](f: X ⇒ Z, s: A ⇒ Z): Z = self match {
-      case Successful(a) ⇒ s(a)
-      case Failed(x)     ⇒ f(x)
-    }
-  }
-
-  // def deferred[X, A](a: ⇒ A): Future[Parcel[X, A]]
-  def successful[X, A](a: A): Parcel[X, A] = Successful[X, A](a)
-  def failed[X, A](x: X): Parcel[X, A]     = Failed[X, A](x)
-
-  private case class Successful[X, A](a: A) extends Parcel[X, A] {
-    def isFailure    = false
-    def isSuccessful = true
-  }
-
-  private case class Failed[X, A](x: X) extends Parcel[X, A] {
-    def isFailure    = true
-    def isSuccessful = false
-  }
-}
+import paermar.model.Domain.PersistenceModule.UnifiedPersistence
+import paermar.utility.UnitOfWork.UnitOfWork
+import paermar.utility.UnitOfWork
 
 trait FeatureUniverse {
   import Parcel._, Domain.PersistenceModule._
@@ -64,10 +21,12 @@ trait FeatureUniverse {
                             (implicit ec: ExecutionContext): Future[X ⊕ A] =
     Future(databaseMap(f))
 
-  def parcelFromOption[A](item: Option[A], failMessage: ⇒ String): String ⊕ A = item match {
+  def requiredParcelFromOption[A](item: Option[A], failMessage: ⇒ String): String ⊕ A = item match {
     case Some(data) ⇒ successful(data)
-    case _       ⇒ failed(failMessage)
+    case _          ⇒ failed(failMessage)
   }
+
+  def run[R](work: UnitOfWork[R]) = (UnitOfWork evaluate work)(database)
 }
 
 trait AuthenticationFeatures { self: FeatureUniverse ⇒
@@ -76,12 +35,10 @@ trait AuthenticationFeatures { self: FeatureUniverse ⇒
 
   case class AuthenticationContext(fullName: String)
 
-  def authenticate(login: String, password: String): String ⊕ AuthenticationContext = databaseMap { implicit session ⇒
-      val authenticAccount = for (name <- persistence.findAuthenticatedAccount(login, password).firstOption)
-        yield successful(AuthenticationContext(name))
-
-      authenticAccount getOrElse failed("authentication.bad_username_or_password")
-    }
+  def authenticate(login: String, password: String) = UnitOfWork { implicit session ⇒
+    parcelled(for (name ← persistence.findAuthenticatedAccount(login, password).firstOption)
+    yield AuthenticationContext(name))
+  }
 }
 
 trait CustomerFeatures { self: FeatureUniverse ⇒
@@ -89,15 +46,14 @@ trait CustomerFeatures { self: FeatureUniverse ⇒
   import Parcel._
   import CustomersModule._
 
-  def customers: String ⊕ Seq[Customer] = databaseMap { implicit session ⇒
+  def customers = UnitOfWork[Seq[Customer]] { implicit session ⇒
     persistence.customers.buildColl[Seq].asSuccessful
   }
 
-  def addCustomer(name: String): String ⊕ Customer = databaseMap { implicit session ⇒
-    val id       = persistence insertCustomer name
-    val customer = persistence findCustomerById id firstOption
+  def addCustomer(name: String) = UnitOfWork { implicit session ⇒
+    val id = persistence insertCustomer name
 
-    customer map successful getOrElse "customer.created_yet_not_found".asFailed
+    parcelled(persistence findCustomerById id)
   }
 }
 
@@ -114,41 +70,36 @@ trait TransactionFeatures { self: FeatureUniverse with CustomerFeatures ⇒
   val ValidDebit  = new ValidatingTransactionExtractor(Debit)
   val ValidCredit = new ValidatingTransactionExtractor(Credit)
 
-  def transactionsSpanning(from: DateTime, through: DateTime): String ⊕ Seq[Transaction] = databaseMap { implicit session ⇒
+  def transactionsSpanning(from: DateTime, through: DateTime) = UnitOfWork { implicit session ⇒
     // There's no error handling anywhere here.
 
     // Sbould `successful` turn into a `failed` on exceptions?
     persistence.transactionsSpanning(from, through).buildColl[Seq].asSuccessful
   }
 
-  def addTransaction(tx: Transaction): String ⊕ Transaction = databaseMap { implicit session ⇒
+  def addTransaction(tx: Transaction) = UnitOfWork { implicit session ⇒
     val txId1 = tx match {
       case ValidDebit(customerId, amount, comment) ⇒
-        val txId = for {
-          customer <- persistence findCustomerById customerId firstOption
-        } yield persistence.insertDebit(customer, amount, comment)
-        txId map successful getOrElse failed("transaction.no_such_customer")
+        parcelled (
+          for (customer ← persistence findCustomerById customerId)
+            yield persistence insertDebit (customer, amount, comment)
+        ) orFailWith "transaction.no_such_customer"
 
       case ValidCredit(customerId, amount, comment) ⇒
-        val txId = for {
-          customer <- persistence findCustomerById customerId firstOption
-        } yield persistence.insertCredit(customer, amount, comment)
-        txId map successful getOrElse failed("transaction.no_such_customer")
+        parcelled (
+          for (customer ← persistence findCustomerById customerId)
+          yield persistence insertCredit (customer, amount, comment)
+        ) orFailWith "transaction.no_such_customer"
 
       case tx0 ⇒
         failed(s"transaction.not_valid: $tx0")
     }
 
-    txId1 map (persistence findTransactionById _ firstOption) flatMap {
-      case Some(x) ⇒ successful(x)
-      case _       ⇒ failed("transaction.created_yet_not_found")
-    }
+    txId1 flatMapOption persistence.findTransactionById
   }
 
-  def transaction(id: Int): String ⊕ Option[Transaction] = databaseMap { implicit session ⇒
-    val transaction = persistence findTransactionById id firstOption
-
-    transaction.asSuccessful
+  def transaction(id: Int) = UnitOfWork { implicit session ⇒
+    parcelled(persistence findTransactionById id)
   }
 }
 
@@ -157,54 +108,51 @@ trait DepositFeatures { self: FeatureUniverse with TransactionFeatures ⇒
   import Parcel._
   import DepositsModule._, TransactionsModule._, CustomersModule._
 
-  def depositsSpanning(from: DateTime, through: DateTime): String ⊕ Seq[Deposit] = databaseMap { implicit session ⇒
+  def depositsSpanning(from: DateTime, through: DateTime) = UnitOfWork { implicit session ⇒
     persistence.depositsSpanning(from, through).buildColl[Seq].asSuccessful
   }
 
-  def addDeposit(payment: Verification): String ⊕ Deposit = databaseMap { implicit session ⇒
+  def addDeposit(payment: Verification) = UnitOfWork { implicit session ⇒
     payment match {
       case CashVerification(customerId, amount, reference) ⇒
         val deposit = for {
-          customer     <- persistence findCustomerById customerId firstOption
+          customer     ← persistence findCustomerById customerId
 
           transactionId = persistence.insertCredit(customer, amount, Option("deposit.cash"))
-          transaction  <- persistence findTransactionById transactionId firstOption
+          transaction  ← persistence findTransactionById transactionId
 
           depositId     = persistence.insertDeposit(transaction.created, amount, reference, customer.name, None, Option(transactionId), Option("deposit.cash"))
-          deposit      <- persistence findDepositById depositId firstOption
+          deposit      ← persistence findDepositById depositId
         } yield deposit
 
-        parcelFromOption(deposit, "deposit.created_yet_not_found")
+        parcelled(deposit)
 
       case BankGiroVerification(valueDate, amount, reference, payer, avi) ⇒
         val id      = persistence.insertDeposit(valueDate, amount, reference, payer, Option(avi), None, None)
-        val deposit = persistence findDepositById id firstOption
+        val deposit = persistence findDepositById id
 
-        parcelFromOption(deposit, "deposit.created_yet_not_found")
+        parcelled(deposit)
     }
   }
 
-  def deposit(id: Int): String ⊕ Option[Deposit] = databaseMap { implicit session ⇒
-    val deposit = persistence findDepositById id firstOption
-
-    deposit.asSuccessful
+  def deposit(id: Int) = UnitOfWork { implicit session ⇒
+    parcelled(persistence findDepositById id)
   }
 
-  def creditDepositToCustomer(credit: CreditCustomerDeposit): String ⊕ Option[Transaction] = databaseMap { implicit session ⇒
+  def creditDepositToCustomer(credit: CreditCustomerDeposit) = UnitOfWork { implicit session ⇒
 
     // What error conditions are there here?
     // Can there ever be a problem with a deposit being claimed first by
     // customer A and later by customer B? What happens to their net dept?
 
-    val transaction = for {
-      deposit       <- persistence findDepositById credit.depositId firstOption;
-      customer      <- persistence findCustomerById credit.customerId firstOption;
-      transactionId  = persistence.insertCredit(customer, deposit.amount, credit.comment)
-      transaction    = persistence findTransactionById transactionId firstOption;
-      _              = persistence.setDepositTransaction(deposit, transactionId)
-    } yield transaction
+    parcelled(for {
+      deposit       ← persistence findDepositById credit.depositId
+      customer      ← persistence findCustomerById credit.customerId
+      transactionId = persistence.insertCredit(customer, deposit.amount, credit.comment)
+      transaction   ← persistence findTransactionById transactionId
+      _             = persistence.setDepositTransaction(deposit, transactionId)
 
-    parcelFromOption(transaction, "deposit.crediting_deposit_to_customer_failed")
+    } yield transaction)
   }
 }
 
@@ -213,17 +161,17 @@ trait ProductFeatures { self: FeatureUniverse ⇒
   import Parcel._
   import ProductsModule._
 
-  def products: String ⊕ Seq[Product] = databaseMap { implicit session ⇒
+  def products = UnitOfWork { implicit session ⇒
     persistence.products.buildColl[Seq].asSuccessful
   }
 
-  def addProduct(product: Product): String ⊕ Product = databaseMap { implicit session ⇒
-    parcelFromOption(product match {
+  def addProduct(product: Product) = UnitOfWork { implicit session ⇒
+    parcelled(product match {
       case Product(_, typ, name, unitPrice, description) ⇒
-        val id = persistence.insertProduct(typ, name, unitPrice, description)
+        val id = persistence insertProduct(typ, name, unitPrice, description)
 
-        persistence findProductById id firstOption
-    }, "product.created_yet_not_found")
+        persistence findProductById id
+    })
   }
 }
 
@@ -233,53 +181,49 @@ trait SubscriptionFeatures { self: FeatureUniverse ⇒
   import SubscriptionsModule._
 
   // Date span here too?
-  def subscriptions: String ⊕ Seq[Subscription] = databaseMap { implicit session ⇒
+  def subscriptions = UnitOfWork { implicit session ⇒
     persistence.subscriptions.buildColl[Seq].asSuccessful
   }
 
-  def addSubscription(subscription: Subscription): String ⊕ Subscription = databaseMap { implicit session ⇒
-    parcelFromOption(subscription match {
+  def addSubscription(subscription: Subscription) = UnitOfWork { implicit session ⇒
+    parcelled(subscription match {
       case Subscription(_, customerId, _, startDate, comment) ⇒
         for {
-            customer      <- persistence findCustomerById customerId firstOption
-
+            customer       ← persistence findCustomerById customerId
             subscriptionId = persistence.insertSubscription(customer, startDate, comment)
-            subscription  <- persistence findSubscriptionById subscriptionId firstOption
+            subscription   ← persistence findSubscriptionById subscriptionId
         } yield subscription
-    }, "subscription.created_yet_not_found")
+    })
   }
 }
 
 trait OrderFeatures { self: FeatureUniverse ⇒
   import persistence.profile.simple._
+  import paermar.utility._, UnitOfWork._
   import Parcel._
   import OrdersModule._, CustomersModule._
 
-  def orders: String ⊕ Seq[Order] = databaseMap { implicit session ⇒
+  def orders = UnitOfWork { implicit session ⇒
     persistence.orders.buildColl[Seq].asSuccessful
   }
 
-  def ordersWithCustomers: String ⊕ Seq[(Order, Customer)] = databaseMap { implicit session ⇒
+  def ordersWithCustomers = UnitOfWork { implicit session ⇒
     persistence.orderCustomerJoin.buildColl[Seq].asSuccessful
   }
 
-  def addOrder(order: OrderInsert): String ⊕ Order = databaseMap { implicit session ⇒
-    parcelFromOption(order match {
+  def addOrder(order: OrderInsert) = UnitOfWork { implicit session ⇒
+    parcelled(order match {
       case NewOrder(customerId, comment) ⇒
         for {
-          customer <- persistence findCustomerById customerId firstOption
-
+          customer ← persistence findCustomerById customerId
           orderId   = persistence.insertOrder(customer, comment)
-          order    <- persistence findOrderById orderId firstOption
+          order    ← persistence findOrderById orderId
         } yield order
-    }, "orders.created_yet_not_found")
+    })
   }
 
-  def order(id: Int): String ⊕ Option[Order] = databaseMap { implicit session ⇒
-    // Still no real error handling. An exception bubbles all the way
-    // up as an Internal Server Error.
-
-    (persistence findOrderById id firstOption).asSuccessful
+  def order(id: Int) = UnitOfWork[Order] { implicit session ⇒
+    parcelled(persistence findOrderById id)
   }
 }
 
@@ -288,40 +232,114 @@ trait TaskFeatures { self: FeatureUniverse ⇒
   import Parcel._
   import TasksModule._, TaskStatuses._
 
-  def tasks: String ⊕ Seq[Task] = databaseMap { implicit session ⇒
+  def tasks = UnitOfWork { implicit session ⇒
     persistence.tasks.buildColl[Seq].asSuccessful
   }
 
-  def addTask(task: TaskMemento): String ⊕ Task = databaseMap { implicit session ⇒
-    parcelFromOption(task match {
+/*
+
+  THERE IS WAY TOO MUCH CODE AROUND HERE. HAS TO BE A WAY TO REDUCE IT.
+  MAYBE INTRODUCE HELPER METHODS LIKE `customer?`
+  SHOULD I BE USING THOSE METHODS FROM OTHER FEATURES PERHAPS?
+
+  USE PUT TO REPLACE EITHER THE ENTIRE OBJECT OR JUST ONE FIELD
+  USE POST TO DO A MERGING UPDATE.
+
+*/
+
+  def addTask(task: TaskMemento) = UnitOfWork { implicit session ⇒
+    parcelled(task match {
       case PlainTask(name, customerId, dueDate) ⇒
-        val customer = customerId flatMap (persistence findCustomerById _ firstOption)
+        val customer = customerId flatMap (persistence findCustomerById _)
         val taskId   = persistence.insertTask(name, customer, dueDate, None)
 
-        persistence findTaskById taskId firstOption
+        persistence findTaskById taskId
 
       case ScheduledTask(name, customerId, deadline, scheduleId) ⇒
-        val customer = customerId flatMap (persistence findCustomerById _ firstOption)
-        val schedule = persistence findScheduleById scheduleId firstOption
+        val customer = customerId flatMap (persistence findCustomerById _)
+        val schedule = persistence findScheduleById scheduleId
         val taskId   = persistence.insertTask(name, customer, Option(deadline), schedule)
 
-        persistence findTaskById taskId firstOption
-    }, "tasks.created_yet_not_found")
+        persistence findTaskById taskId
+    })
   }
 
-  def task(id: Int): String ⊕ Option[Task] = databaseMap { implicit session ⇒
-    (persistence findTaskById id firstOption).asSuccessful
+  def task(id: Int) = UnitOfWork { implicit session ⇒
+    parcelled(persistence findTaskById id)
   }
 
-  def updateTask(id: Int, task: TaskMemento): String ⊕ Task = databaseMap { implicit session ⇒
-    ???
+  def updateTask(id: Int, task: TaskMemento) = UnitOfWork { implicit session ⇒
+    parcelled(task match {
+      case PlainTask(name, customerId, dueDate) ⇒
+        val customer = customerId flatMap (persistence findCustomerById _)
+        persistence.updateTask(id)(
+          name     = Option(name),
+          customer = customer,
+          dueDate  = dueDate)
+
+        persistence findTaskById id
+
+      case ScheduledTask(name, customerId, deadline, scheduleId) ⇒
+        val customer = customerId flatMap (persistence findCustomerById _)
+        val schedule = persistence findScheduleById scheduleId
+        val taskId   = persistence.insertTask(name, customer, Option(deadline), schedule)
+
+        persistence findTaskById taskId
+    })
   }
+
+  def replaceTask(id: Int, task: TaskMemento) = UnitOfWork { implicit session ⇒
+    parcelled(task match {
+      case PlainTask(name, customerId, dueDate) ⇒
+        val customer = customerId flatMap (persistence findCustomerById _)
+
+        // add another TaskMemento implementation that
+        // provides the works.
+/*
+        persistence.replaceTask(id)(
+          name     = name,
+          customer = customer,
+          dueDate  = dueDate)
+*/
+
+        persistence findTaskById id
+
+      case ScheduledTask(name, customerId, deadline, scheduleId) ⇒
+        val customer = customerId flatMap (persistence findCustomerById _)
+        val schedule = persistence findScheduleById scheduleId
+        val taskId   = persistence.insertTask(name, customer, Option(deadline), schedule)
+
+        persistence findTaskById taskId
+    })
+  }
+}
+
+trait ShipmentFeatures { self: FeatureUniverse with OrderFeatures ⇒
+  import persistence.profile.simple._
+  import paermar.utility._, Monad._, MonadInstances._
+  import Parcel._
+  import ShipmentsModule._, ShipmentStatuses._
+
+  def shipments = UnitOfWork { implicit session ⇒
+    persistence.shipments.buildColl[Seq].asSuccessful
+  }
+
+  def shipment(id: Int) = UnitOfWork { implicit session ⇒
+    parcelled(persistence findShipmentById id)
+  }
+
+  def addShipment(orderId: Int) = for {
+    order    ← order(orderId)
+    shipment ← UnitOfWork { implicit s ⇒
+      order map persistence.insertShipment flatMap (shipment(_)(s))
+    }
+  } yield shipment
 }
 
 // I should really combine application with model as there's no real
 // gain at the moment.
 
-class ApplicationFeatures(val persistence: Domain.PersistenceModule.UnifiedPersistence,
+class ApplicationFeatures(val persistence: UnifiedPersistence,
                           val database: JdbcBackend#Database) extends FeatureUniverse
   with AuthenticationFeatures
   with CustomerFeatures
@@ -331,3 +349,4 @@ class ApplicationFeatures(val persistence: Domain.PersistenceModule.UnifiedPersi
   with SubscriptionFeatures
   with OrderFeatures
   with TaskFeatures
+  with ShipmentFeatures
