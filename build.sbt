@@ -23,7 +23,7 @@ resolvers += "spray repo" at "http://repo.spray.io"
 
 libraryDependencies += "com.typesafe.akka" %% "akka-actor" % "2.3.2"
 
-libraryDependencies += "com.typesafe.slick" %%  "slick" % "2.1.0-M1"
+libraryDependencies += "com.typesafe.slick" %%  "slick" % "2.0.1"
 
 libraryDependencies += "mysql" % "mysql-connector-java" % "5.1.30"
 
@@ -37,6 +37,6 @@ libraryDependencies += "joda-time" % "joda-time" % "2.3"
 
 libraryDependencies += "org.joda" % "joda-convert" % "1.5"
 
-libraryDependencies += "com.github.tototoshi" %% "slick-joda-mapper" % "1.0.1"
+libraryDependencies += "com.github.tototoshi" %% "slick-joda-mapper" % "1.1.0"
 
 // libraryDependencies += "org.scala-lang" %% "scala-pickling" % "0.8.0-SNAPSHOT"
