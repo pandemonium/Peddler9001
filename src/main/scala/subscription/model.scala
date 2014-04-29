@@ -433,6 +433,13 @@ object Domain {
                              deadline: DateTime,
                              scheduleId: Int)
       extends TaskMemento
+    case class TaskSnapshot(name: String,
+                            status: TaskStatus,
+                            dueDate: DateTime,
+                            scheduleId: Option[Int],
+                            comment: Option[String],
+                            customer: Option[Int])
+      extends TaskMemento
 
     object UnitTypes {
       sealed abstract class UnitType private[UnitTypes] (val value: Int)
@@ -550,7 +557,8 @@ object Domain {
       def insertTask(name: String,
                      customer: Option[Customer],
                      due: Option[DateTime],
-                     schedule: Option[Schedule])
+                     schedule: Option[Schedule],
+                     comment: Option[String])
                     (implicit s: Session) =
         taskInserts += Task(None,
                             name,
@@ -575,19 +583,12 @@ object Domain {
                       schedule: Option[Schedule],
                       comment: Option[String]) = ???
 
-      // partial update
-      def updateTask(id: Int)
-                    (name: Option[String]       = None,
-                     status: Option[TaskStatus] = None,
-                     customer: Option[Customer] = None,
-                     dueDate: Option[DateTime]  = None,
-                     schedule: Option[Schedule] = None,
-                     comment: Option[String]    = None) = ???
-
       def findTaskById(id: Int)(implicit s: Session) =
         tasks.findBy(_.id).applied(id).firstOption
+
       def findTaskActivityById(id: Int)(implicit s: Session) =
         taskActivities.findBy(_.id).applied(id).firstOption
+
       def findScheduleById(id: Int)(implicit s: Session) =
         schedules.findBy(_.id).applied(id).firstOption
     }

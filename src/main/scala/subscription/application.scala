@@ -46,14 +46,16 @@ trait CustomerFeatures { self: FeatureUniverse ⇒
   import Parcel._
   import CustomersModule._
 
-  def customers = UnitOfWork[Seq[Customer]] { implicit session ⇒
+  def customer(id: Int) = UnitOfWork { implicit session ⇒
+    parcelled(persistence findCustomerById id)
+  }
+
+  def customers = UnitOfWork { implicit session ⇒
     persistence.customers.buildColl[Seq].asSuccessful
   }
 
   def addCustomer(name: String) = UnitOfWork { implicit session ⇒
-    val id = persistence insertCustomer name
-
-    parcelled(persistence findCustomerById id)
+    customer(persistence insertCustomer name)(session)
   }
 }
 
@@ -216,7 +218,7 @@ trait OrderFeatures { self: FeatureUniverse ⇒
       case NewOrder(customerId, comment) ⇒
         for {
           customer ← persistence findCustomerById customerId
-          orderId   = persistence.insertOrder(customer, comment)
+          orderId  = persistence.insertOrder(customer, comment)
           order    ← persistence findOrderById orderId
         } yield order
     })
@@ -227,7 +229,7 @@ trait OrderFeatures { self: FeatureUniverse ⇒
   }
 }
 
-trait TaskFeatures { self: FeatureUniverse ⇒
+trait TaskFeatures { self: FeatureUniverse with CustomerFeatures ⇒
   import persistence.profile.simple._
   import Parcel._
   import TasksModule._, TaskStatuses._
@@ -236,29 +238,25 @@ trait TaskFeatures { self: FeatureUniverse ⇒
     persistence.tasks.buildColl[Seq].asSuccessful
   }
 
-/*
-
-  THERE IS WAY TOO MUCH CODE AROUND HERE. HAS TO BE A WAY TO REDUCE IT.
-  MAYBE INTRODUCE HELPER METHODS LIKE `customer?`
-  SHOULD I BE USING THOSE METHODS FROM OTHER FEATURES PERHAPS?
-
-  USE PUT TO REPLACE EITHER THE ENTIRE OBJECT OR JUST ONE FIELD
-  USE POST TO DO A MERGING UPDATE.
-
-*/
-
   def addTask(task: TaskMemento) = UnitOfWork { implicit session ⇒
     parcelled(task match {
       case PlainTask(name, customerId, dueDate) ⇒
-        val customer = customerId flatMap (persistence findCustomerById _)
-        val taskId   = persistence.insertTask(name, customer, dueDate, None)
+        val customer = customerId flatMap persistence.findCustomerById
+        val taskId   = persistence.insertTask(name, customer, dueDate, None, None)
 
         persistence findTaskById taskId
 
       case ScheduledTask(name, customerId, deadline, scheduleId) ⇒
-        val customer = customerId flatMap (persistence findCustomerById _)
+        val customer = customerId flatMap persistence.findCustomerById
         val schedule = persistence findScheduleById scheduleId
-        val taskId   = persistence.insertTask(name, customer, Option(deadline), schedule)
+        val taskId   = persistence.insertTask(name, customer, Option(deadline), schedule, None)
+
+        persistence findTaskById taskId
+
+      case TaskSnapshot(name, status, deadline, scheduleId, comment, customerId) ⇒
+        val customer = customerId flatMap persistence.findCustomerById
+        val schedule = scheduleId flatMap persistence.findScheduleById
+        val taskId   = persistence.insertTask(name, customer, Option(deadline), schedule, comment)
 
         persistence findTaskById taskId
     })
@@ -268,21 +266,24 @@ trait TaskFeatures { self: FeatureUniverse ⇒
     parcelled(persistence findTaskById id)
   }
 
-  def updateTask(id: Int, task: TaskMemento) = UnitOfWork { implicit session ⇒
+  def mergeTask(id: Int, task: TaskMemento) = UnitOfWork { implicit session ⇒
     parcelled(task match {
       case PlainTask(name, customerId, dueDate) ⇒
-        val customer = customerId flatMap (persistence findCustomerById _)
-        persistence.updateTask(id)(
+        val customer = customerId flatMap persistence.findCustomerById
+
+/*
+        persistence.mergeTask(id)(
           name     = Option(name),
           customer = customer,
           dueDate  = dueDate)
+*/
 
         persistence findTaskById id
 
       case ScheduledTask(name, customerId, deadline, scheduleId) ⇒
-        val customer = customerId flatMap (persistence findCustomerById _)
+        val customer = customerId flatMap persistence.findCustomerById
         val schedule = persistence findScheduleById scheduleId
-        val taskId   = persistence.insertTask(name, customer, Option(deadline), schedule)
+        val taskId   = persistence.insertTask(name, customer, Option(deadline), schedule, None)
 
         persistence findTaskById taskId
     })
@@ -307,7 +308,7 @@ trait TaskFeatures { self: FeatureUniverse ⇒
       case ScheduledTask(name, customerId, deadline, scheduleId) ⇒
         val customer = customerId flatMap (persistence findCustomerById _)
         val schedule = persistence findScheduleById scheduleId
-        val taskId   = persistence.insertTask(name, customer, Option(deadline), schedule)
+        val taskId   = persistence.insertTask(name, customer, Option(deadline), schedule, None)
 
         persistence findTaskById taskId
     })
@@ -316,9 +317,9 @@ trait TaskFeatures { self: FeatureUniverse ⇒
 
 trait ShipmentFeatures { self: FeatureUniverse with OrderFeatures ⇒
   import persistence.profile.simple._
-  import paermar.utility._, Monad._, MonadInstances._
+  import paermar.utility._
   import Parcel._
-  import ShipmentsModule._, ShipmentStatuses._
+  import ShipmentsModule._
 
   def shipments = UnitOfWork { implicit session ⇒
     persistence.shipments.buildColl[Seq].asSuccessful

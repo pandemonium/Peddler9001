@@ -136,3 +136,10 @@ object Parcel {
   def flatten[X, A](pp: Parcel[X, Parcel[X, A]]): Parcel[X, A] =
     pp.flatMap(_.fold(failed, successful, empty))
 }
+
+object Change {
+  sealed trait Change[A]
+  case class Add[A](value: A) extends Change[A]
+  case object Delete extends Change[Nothing]
+
+}

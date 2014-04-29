@@ -35,6 +35,7 @@ import spray.httpx.TwirlSupport
 import spray.http.MediaType
 import spray.http.HttpHeaders.Accept
 import paermar.utility.UnitOfWork.UnitOfWork
+import paermar.ui.html
 
 object Service {
   import paermar.watable.WATable.TransportFormatProtocol.Transfer
@@ -45,7 +46,7 @@ object Service {
          CustomersModule._, ProductsModule._, SubscriptionsModule._,
          OrdersModule._, TasksModule._
 
-  trait ServiceUniverse extends ResponseSupport {
+  trait ServiceUniverse extends ResponseSupport with TwirlSupport {
     val protocol: Protocol
     val application: ApplicationFeatures
     implicit def executionContext: ExecutionContext
@@ -206,11 +207,15 @@ object Service {
   }
 
   trait CustomerRoute extends RouteSource { self: ServiceUniverse ⇒
-    import protocol._
+    import protocol._, paermar.ui._
 
-    override abstract def route = thisRoute ~ super.route
+    override abstract def route = uiRoute ~ thisRoute ~ super.route
 
-    private def thisRoute = path("customers") {
+    private def thisRoute = pathPrefix("customers") {
+      uiRoute ~ uniqueRoute ~ collectionRoute
+    }
+
+    private def collectionRoute = pathEnd {
       get {
         parameter('format ?) { format ⇒ ctx ⇒
           format match {
@@ -233,6 +238,26 @@ object Service {
           complete(application.run(application addCustomer name))
         }
       }
+    }
+
+    private def uniqueRoute = pathPrefix(IntNumber) { customerId ⇒
+      pathEnd {
+        get { ctx ⇒
+          (application customer customerId).fold(internalServerError(ctx),
+                                                 ctx.complete[Customer],
+                                                 ctx complete NotFound)
+        }
+      } ~ pathSuffix("orders") {
+        get {
+          complete(s"order: $customerId / lines")
+        }
+      }
+    }
+
+    private def uiRoute = get { ctx ⇒
+      application.customers fold(error     ⇒ ctx complete error /*html.errorPage(error)*/,
+                                 customers ⇒ ctx complete html.customers(customers),
+                                 ctx complete NotFound)
     }
   }
 
@@ -336,7 +361,7 @@ object Service {
     }
   }
 
-  trait OrdersRoute extends RouteSource with TwirlSupport { self: ServiceUniverse ⇒
+  trait OrdersRoute extends RouteSource { self: ServiceUniverse ⇒
     import protocol._, paermar.ui._
 
     override abstract def route = thisRoute ~ super.route
@@ -346,8 +371,8 @@ object Service {
     }
 
     private def uiRoute = get { ctx ⇒
-      application.ordersWithCustomers fold(error  ⇒ ctx complete html.errorPage(error),
-                                           orders ⇒ ctx complete html.orders(orders),
+      application.ordersWithCustomers fold(error ⇒ ctx complete html.errorPage(error),
+                                           model ⇒ ctx complete html.orders(model),
                                            ctx complete NotFound)
     }
 
@@ -416,7 +441,7 @@ object Service {
     private def uniqueRoute = pathPrefix(IntNumber) { taskId ⇒
       pathEnd {
         get { ctx ⇒
-          (application task taskId).fold(internalServerError(ctx),
+          (application task taskId).fold(ctx.complete(InternalServerError, _),
                                          ctx.complete[Task],
                                          ctx complete NotFound)
         }
@@ -424,6 +449,13 @@ object Service {
         get {
           complete(s"task: $taskId / activities")
         }
+      } ~ fieldRoutes
+    }
+
+    private def fieldRoutes = put {
+      pathPrefix(Segment) {
+        // How does this happen with a minimum of boiler plate?
+        case "bar" ⇒ complete("Hello")
       }
     }
   }
