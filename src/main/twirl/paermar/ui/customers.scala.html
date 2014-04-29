@@ -1,0 +1,31 @@
+@(customers: Seq[paermar.model.Domain.CustomersModule.Customer])
+@main {
+    <script language="text/javascript">
+        $(document).ready(function () {
+            setActive("customers");
+        });
+    </script>
+    <div class="panel panel-primary">
+        <div class="panel-heading">Show all the customers</div>
+        <div class="panel-body">
+            <p>Lorem ipsum.</p>
+
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Since</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @for(customer <- customers) {
+                    <tr>
+                        <td>@customer.name</td>
+                        <td>@customer.created</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
