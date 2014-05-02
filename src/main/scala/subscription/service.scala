@@ -209,7 +209,7 @@ object Service {
   trait CustomerRoute extends RouteSource { self: ServiceUniverse ⇒
     import protocol._, paermar.ui._
 
-    override abstract def route = uiRoute ~ thisRoute ~ super.route
+    override abstract def route = thisRoute ~ super.route
 
     private def thisRoute = pathPrefix("customers") {
       uiRoute ~ uniqueRoute ~ collectionRoute
@@ -415,7 +415,13 @@ object Service {
     override abstract def route = thisRoute ~ super.route
 
     private def thisRoute = pathPrefix("tasks") {
-      uniqueRoute ~ collectionRoute
+      uiRoute ~ uniqueRoute ~ collectionRoute
+    }
+
+    private def uiRoute = get { ctx ⇒
+      application.tasks fold(error ⇒ ctx complete html.errorPage(error),
+                             model ⇒ ctx complete html.tasks(model),
+                             ctx complete NotFound)
     }
 
     private def collectionRoute = pathEnd {

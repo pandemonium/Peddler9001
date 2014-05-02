@@ -1,6 +1,6 @@
 @(orders: Seq[(paermar.model.Domain.OrdersModule.Order, paermar.model.Domain.CustomersModule.Customer)])
 @main {
-    <script language="text/javascript">
+    <script type="text/javascript">
         $(document).ready(function () {
             setActive("orders");
         });
@@ -12,19 +12,19 @@
 
             <table class="table">
                 <thead>
-                <tr>
-                    <th>Status</th>
-                    <th>Customer</th>
-                    <th>Comment</th>
-                </tr>
+                    <tr>
+                        <th>Status</th>
+                        <th>Customer</th>
+                        <th>Comment</th>
+                    </tr>
                 </thead>
                 <tbody>
                 @for((order, customer) <- orders) {
-                <tr>
-                    <td>@order.status</td>
-                    <td>@customer.name</td>
-                    <td>@order.comment</td>
-                </tr>
+                    <tr>
+                        <td>@order.status</td>
+                        <td>@customer.name</td>
+                        <td>@order.comment</td>
+                    </tr>
                 }
                 </tbody>
             </table>

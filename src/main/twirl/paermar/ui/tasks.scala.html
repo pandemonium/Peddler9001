@@ -1,14 +1,12 @@
-@(customers: Seq[paermar.model.Domain.CustomersModule.Customer])
+@(tasks: Seq[paermar.model.Domain.TasksModule.Task])
 @main {
-
     <script type="text/javascript">
         $(document).ready(function () {
-            setActive("customers");
+            setActive("tasks");
         });
     </script>
-
     <div class="panel panel-primary">
-        <div class="panel-heading">Show all the customers</div>
+        <div class="panel-heading">Dashboard</div>
         <div class="panel-body">
             <p>Lorem ipsum.</p>
 
@@ -16,14 +14,14 @@
                 <thead>
                     <tr>
                         <th>Name</th>
-                        <th>Since</th>
+                        <th>Due</th>
                     </tr>
                 </thead>
                 <tbody>
-                @for(customer <- customers) {
+                @for(task <- tasks) {
                     <tr>
-                        <td>@customer.name</td>
-                        <td>@customer.created</td>
+                        <td>@task.name</td>
+                        <td>@task.dueDate</td>
                     </tr>
                 }
                 </tbody>
