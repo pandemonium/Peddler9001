@@ -51,6 +51,13 @@ object Domain {
 
       def findCustomerById(id: Int)(implicit session: Session) =
         customers.findBy(_.id).applied(id).firstOption
+
+      def findCustomerByNameQuery(term: String)
+                                 (implicit session: Session) =
+        for (
+          c ← customers
+            if c.name like s"%$term%"
+        ) yield c
     }
   }
 
@@ -166,8 +173,7 @@ object Domain {
         def transactionId = column[Int]("transactionId")
         def comment       = column[String]("comment")
 
-        def transaction   =
-          foreignKey("transactionFk", transactionId, transactions)(_.id)
+        def transaction   = foreignKey("transactionFk", transactionId, transactions)(_.id)
 
         def * = (id ?, valueDate, created, amount, reference, payer, avi ?, transactionId ?, comment ?) <>
                   (Deposit.tupled, Deposit.unapply)
@@ -313,7 +319,7 @@ object Domain {
         def order       = foreignKey("orderFk", orderId, orders)(_.id)
         def product     = foreignKey("productFk", productId, products)(_.id)
 
-        def *           = (id ?, orderId, productId, quantity, description ?) <>
+        def * = (id ?, orderId, productId, quantity, description ?) <>
           (OrderLine.tupled, OrderLine.unapply)
       }
 

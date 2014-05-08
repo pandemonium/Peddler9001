@@ -17,13 +17,10 @@
     <link rel='stylesheet' href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap-theme.min.css"/>
     <link href="/css/watable.css" rel="stylesheet">
 
-    <!-- Bootstrap core CSS -->
-    <!--    <link href="css/bootstrap.min.css" rel="stylesheet">-->
-
-
     <!-- Custom styles for this template -->
     <link href="/css/navbar-fixed-top.css" rel="stylesheet">
     <link href="/css/datepicker.css" rel="stylesheet">
+    <link href="/css/typeahead.css" rel="stylesheet">
 
     <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
     <!--[if lt IE 9]>
@@ -36,14 +33,6 @@
             $("#" + name).addClass("active");
         }
     </script>
-<!--
-    <style>
-        .datepicker {
-            z-index: 1151;
-            cursor: arrow;
-        }
-    </style>
--->
 </head>
 
 <body>
@@ -95,33 +84,101 @@
 </div> <!-- /container -->
 
 <div id="newTask" class="modal fade">
-    <div class="modal-dialog">
+
+    <script type='text/javascript'>
+      $.fn.serializeObject = function(options) {
+        var excludeEmpty = false;
+
+        if (options !== undefined && options.excludeEmpty !== undefined)
+          excludeEmpty = options.excludeEmpty;
+
+      	var o = {};
+      	var a = this.serializeArray();
+      	$.each(a, function() {
+      		if (o[this.name]) {
+      			if (!o[this.name].push) {
+      				o[this.name] = [o[this.name]];
+      			}
+
+            if (this.value)
+      			   o[this.name].push(this.value);
+
+      		} else {
+      			if (this.value)
+              o[this.name] = this.value;
+
+      		}
+      	});
+      	return o;
+      };
+
+      $(document).ready(function () {
+
+        $('#taskForm').submit(function (event) {
+          event.preventDefault();
+
+          var taskData = $('#taskForm').serializeObject({
+            excludeEmpty: true
+          });
+
+          addTask(taskData);
+        });
+
+      });
+
+      function addTask(taskData) {
+        postObject('/tasks', taskData);
+      }
+
+      function postObject(uri, object, onSuccess, onFailure) {
+        $.ajax({
+          type: 'POST',
+          url: uri,
+          data: JSON.stringify(object),
+          contentType: 'application/json; charset=utf-8',
+          dataType: 'json',
+          success: function (data) {
+            if (onSuccess !== undefined) {
+              if (data.successful !== undefined)
+                onSuccess(data.successful);
+              else if (onFailure !== undefined && data.failure !== undefined)
+                onFailure(data.failure)
+            }
+          },
+          failure: function (errorMessage) {
+            if (onFailure !== undefined) onFailure(errorMessage);
+          }
+        });
+      }
+    </script>
+
+    <div class="modal-dialog modal-sm">
         <div class="modal-content">
+          <form id='taskForm' role="form" action="foo">
             <div class="modal-header">
                 <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
                 <h4 class="modal-title">Add a new task</h4>
             </div>
             <div class="modal-body">
                 <p>Describe the task</p>
-                <form role="form">
                     <div class="form-group">
                         <label for="name">Name it!</label>
-                        <input type="text" class="form-control" id="name" placeholder="Name your task">
+                        <input type="text" name="name" class="form-control" id="name" placeholder="Name your task">
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" data-date-format="dd-mm-yyyy">
                         <label for="dueDate">When is it due?</label>
-                        <input type="datetime" class="form-control" id="dueDate" placeholder="Leave empty if not due anytime soon">
+                        <input type="datetime" name="dueDate" class="form-control" id="dueDate" placeholder="Leave empty if not due anytime soon">
                     </div>
                     <div class="form-group">
                         <label for="customer">Customer concerned</label>
-                        <input type="search" class="form-control" id="customer" placeholder="Whom it concerns">
+                        <input type="typeahead" name="customerName" class="form-control" id="customerId" placeholder="Relate to customer">
                     </div>
-                </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary">Save changes</button>
+                <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Add</button>
             </div>
+          </form>
         </div><!-- /.modal-content -->
     </div><!-- /.modal-dialog -->
 </div><!-- /.modal -->
@@ -133,9 +190,41 @@
 <script src="/js/service.js"></script>
 <script src="/js/bootstrap-datepicker.js"></script>
 <script src="/js/jquery.watable.js"></script>
+<script src="/js/typeahead.bundle.js"></script>
 <script type="text/javascript">
     $(document).ready(function () {
-        $('#dueDate').datepicker();
+      $('#dueDate').datepicker({
+        format: "yyyy-mm-dd",
+        weekStart: 1
+      }).on('changeDate', function (e) {
+        $(this).datepicker('hide');
+      });
+
+      var bloodhound = new Bloodhound({
+        datumTokenizer: Bloodhound.tokenizers.obj.whitespace('success'),
+        queryTokenizer: Bloodhound.tokenizers.whitespace,
+        remote: {
+          url: '/customers?query=%QUERY',
+          filter: function (r) {
+            return r.success;
+          }
+        }
+      });
+
+      bloodhound.initialize();
+
+      $('#customerId').typeahead({
+        hint: true,
+        highlight: true,
+        minLength: 1
+      }, {
+        name: 'customers',
+        displayKey: 'name',
+        source: bloodhound.ttAdapter()
+      }).on('typeahead:selected', function (event, item) {
+        console.log(event);
+        console.log(item);
+      });
     });
 </script>
 </body>

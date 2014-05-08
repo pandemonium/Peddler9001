@@ -51,7 +51,15 @@ trait CustomerFeatures { self: FeatureUniverse ⇒
   }
 
   def customers = UnitOfWork { implicit session ⇒
+    println(s"CustomerFeatures.customers")
+
     persistence.customers.buildColl[Seq].asSuccessful
+  }
+
+  def customerQuery(term: String) = UnitOfWork { implicit session ⇒
+    println(s"CustomerFeatures.customerQuery query: $term")
+
+    persistence.findCustomerByNameQuery(term).buildColl[Seq].asSuccessful
   }
 
   def addCustomer(name: String) = UnitOfWork { implicit session ⇒

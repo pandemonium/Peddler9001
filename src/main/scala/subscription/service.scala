@@ -124,7 +124,7 @@ object Service {
       }
 
       def write(status: TaskStatus): JsValue = status match {
-        case Open ⇒ JsString("Open")
+        case Open   ⇒ JsString("Open")
         case Closed ⇒ JsString("Closed")
       }
     }
@@ -162,7 +162,7 @@ object Service {
     implicit def _ParcelFormat[X: JsonFormat, A: JsonFormat] = new RootJsonFormat[X ⊕ A] {
       val Success = SingletonMapExtractor[String, JsValue]("success")
       val Failure = SingletonMapExtractor[String, JsValue]("failure")
-      val Empty   = SingletonMapExtractor[String, JsValue]("failure")
+      val Empty   = SingletonMapExtractor[String, JsValue]("empty")
 
       def read(json: JsValue): X ⊕ A = json match {
         case Success(v) ⇒ successful[X, A](v.convertTo[A])
@@ -187,7 +187,7 @@ object Service {
       case _ ⇒ Promise successful None future
     }
 
-    override abstract def route = authenticate(BasicAuth(authenticator, realm = "Inside")) { authenticationContext ⇒
+    override abstract def route = authenticate(BasicAuth(authenticator, realm = "Inside")) { authentication ⇒
       // how do I pass on `authenticationContext` ?
       // I could probably just pass it on to route
       super.route
@@ -212,26 +212,17 @@ object Service {
     override abstract def route = thisRoute ~ super.route
 
     private def thisRoute = pathPrefix("customers") {
-      uiRoute ~ uniqueRoute ~ collectionRoute
+      uniqueRoute ~ collectionRoute ~ uiRoute
     }
 
     private def collectionRoute = pathEnd {
       get {
-        parameter('format ?) { format ⇒ ctx ⇒
-          format match {
-            case Some("watable") ⇒
+        parameters('query ?) { query ⇒  ctx ⇒
+          println(s"Query: $query")
 
-              // Todo: invent way to turn the failure side of a parcel into
-              // a useful DataStructure (or something) so that the client side
-              // can present some kind of error box.
-              application.customers fold(_    ⇒ Transfer(Map.empty, Seq.empty[String]),
-                                         data ⇒ ctx.complete[Transfer[Customer]](data),
-                                         Transfer(Map.empty, Seq.empty[String]))
+          val customers = query map application.customerQuery getOrElse application.customers
 
-
-            case _               ⇒
-              ctx complete application.run(application.customers)
-          }
+          ctx complete application.run(customers)
         }
       } ~ post {
         entity(as[String]) { name ⇒
@@ -255,7 +246,7 @@ object Service {
     }
 
     private def uiRoute = get { ctx ⇒
-      application.customers fold(error     ⇒ ctx complete error /*html.errorPage(error)*/,
+      application.customers fold(error     ⇒ ctx complete html.errorPage(error),
                                  customers ⇒ ctx complete html.customers(customers),
                                  ctx complete NotFound)
     }
@@ -371,7 +362,7 @@ object Service {
     }
 
     private def uiRoute = get { ctx ⇒
-      application.ordersWithCustomers fold(error ⇒ ctx complete html.errorPage(error),
+      application.ordersWithCustomers.fold(error ⇒ ctx complete html.errorPage(error),
                                            model ⇒ ctx complete html.orders(model),
                                            ctx complete NotFound)
     }
